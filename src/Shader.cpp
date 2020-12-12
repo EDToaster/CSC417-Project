@@ -40,6 +40,7 @@ Shader::Shader(const std::string& filename, GLenum type) {
   // file loading
   vector<char> fileContent;
   getFileContents(filename.c_str(), fileContent);
+  string fileString(fileContent.begin(), fileContent.end());
 
   // creation
   handle = glCreateShader(type);
@@ -47,7 +48,7 @@ Shader::Shader(const std::string& filename, GLenum type) {
     throw std::runtime_error("[Error] Impossible to create a new Shader");
 
   // code source assignation
-  const char* shaderText(&fileContent[0]);
+  const GLchar* shaderText = fileString.c_str();
   glShaderSource(handle, 1, (const GLchar**)&shaderText, NULL);
 
   // compilation
@@ -93,11 +94,12 @@ ShaderProgram::ShaderProgram(std::initializer_list<Shader> shaderList)
 }
 
 void ShaderProgram::link() {
+    cout << "[Info] Linking shader" << std::endl;
   glLinkProgram(handle);
   GLint result;
   glGetProgramiv(handle, GL_LINK_STATUS, &result);
   if (result != GL_TRUE) {
-    cout << "[Error] linkage error" << endl;
+    cout << "[Error] Shader link error" << endl;
 
     GLsizei logsize = 0;
     glGetProgramiv(handle, GL_INFO_LOG_LENGTH, &logsize);
@@ -107,21 +109,18 @@ void ShaderProgram::link() {
 
     cout << log << endl;
   }
+  cout << "[Info] Shader linked";
 }
 
 GLint ShaderProgram::uniform(const std::string& name) {
-  auto it = uniforms.find(name);
-  if (it == uniforms.end()) {
     // uniform that is not referenced
     GLint r = glGetUniformLocation(handle, name.c_str());
     if (r == GL_INVALID_OPERATION || r < 0)
-      cout << "[Error] uniform " << name << " doesn't exist in program" << endl;
+        cout << "[Error] uniform " << name << " doesn't exist in program" << endl;
     // add it anyways
     uniforms[name] = r;
 
     return r;
-  } else
-    return it->second;
 }
 
 GLint ShaderProgram::attribute(const std::string& name) {
@@ -172,6 +171,13 @@ void ShaderProgram::setUniform(const std::string& name,
                                float y,
                                float z) {
   glUniform3f(uniform(name), x, y, z);
+}
+
+void ShaderProgram::setUniform(const std::string& name, const vec2& v) {
+    glUniform2fv(uniform(name), 1, value_ptr(v));
+}
+void ShaderProgram::setUniform(const std::string& name, const dvec2& v) {
+    glUniform2dv(uniform(name), 1, value_ptr(v));
 }
 
 void ShaderProgram::setUniform(const std::string& name, const vec3& v) {
