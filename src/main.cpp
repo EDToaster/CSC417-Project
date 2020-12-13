@@ -14,10 +14,13 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
+#define B2_USER_SETTINGS
+
 #include "Shader.hpp"
 #include "Types.hpp"
 #include "UI.hpp"
 #include "Simulation.hpp"
+#include "Marching.hpp"
 
 #define SHADER_DIR "../shader/"
 #define TEXTURES_DIR "../assets/textures/"
@@ -231,12 +234,65 @@ int main(int argc, const char* argv[]) {
         glRectf(-1, -1, 1, 1);
         shader.unuse();
 
+        // draw contours
+        glLineWidth(5);
+        glColor3f(1, 1, 1);
+        for (auto contour : sim.contours) {
+            float sx, sy, ox, oy;
+
+            glBegin(GL_LINE_STRIP);
+            {
+                for (auto vertex : contour.vertices) {
+                    UI::SimToScreen(renres, renderScale, vertex.x, vertex.y, sx, sy);
+                    UI::ScreenToOpenGL(renres, sx, sy, ox, oy);
+                    glVertex2f(ox, oy);
+                }
+            } 
+            glEnd();
+        }
+
+        // draw rigid bodies
+        glColor3f(1, 1, 1);
+        for (auto rbody : sim.rigidBodies) {
+            // get rigid body position
+            b2Body* body = rbody.body;
+            const b2Vec2& pos = body->GetPosition();
+            const b2Transform& transform = body->GetTransform();
+
+            // for each fixture get polygons
+            for (b2Fixture* f = body->GetFixtureList(); f; f = f->GetNext())
+            {
+                // assume this fixture is of e_polygon type
+                b2PolygonShape* shape = (b2PolygonShape*)f->GetShape();
+                int v_count = shape->m_count;
+
+
+                glBegin(GL_POLYGON);
+                {
+                    for (int i = 0; i < v_count; i++) {
+                        b2Vec2& vpos = body->GetWorldPoint(shape->m_vertices[i]);
+
+                        float sx, sy, ox, oy;
+                        // transform from sim space to screen space
+                        UI::SimToScreen(renres, renderScale, vpos.x, vpos.y, sx, sy);
+                        // transform from screen space to openGL space
+                        UI::ScreenToOpenGL(renres, sx, sy, ox, oy);
+
+                        glVertex2f(ox, oy);
+                    }
+                }
+                glEnd();
+            }
+            // draw a dot at the current position
+            //UI::DrawCircle(renres, sx, sy, 3, 3);
+        }
+
         // draw selectors
         ui.Render(sim.currentParticleType->id);
 
         // draw circle around 
         glColor3f(1, 1, 1);
-        glLineWidth(5);
+        glLineWidth(1);
         UI::DrawCircle(renres, mx, my, sim.radius * renderScale.x, sim.radius * renderScale.y);
 
 
@@ -283,6 +339,7 @@ int main(int argc, const char* argv[]) {
             sim.Tick(tick);
             tick++;
         }
+        //std::cout << "Tick" << std::endl;
     }
 
     shader.unuse();

@@ -20,6 +20,11 @@ namespace UI {
         gly = 2 * (disp_res.y - y) / double(disp_res.y) - 1.0;
     }
 
+    void SimToScreen(const glm::vec2& disp_res, const glm::vec2& ren_scale, float px, float py, float& sx, float& sy) {
+        sx = px * ren_scale.x;
+        sy = disp_res.y - py * ren_scale.y;
+    }
+
     void DrawCircle(const glm::ivec2& disp_res, i64 sx, i64 sy, i64 srx, i64 sry) {
 
         GLfloat x, y, rx, ry;

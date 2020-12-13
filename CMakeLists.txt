@@ -10,6 +10,7 @@ add_executable(main
   src/UI.hpp
   src/Types.hpp
   src/Simulation.hpp
+  src/Marching.hpp
   src/Shader.hpp
   src/Shader.cpp)
 

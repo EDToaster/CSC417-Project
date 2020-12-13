@@ -10,3 +10,6 @@
 [submodule "lib/freetype2"]
 	path = lib/freetype2
 	url = https://github.com/freetype/freetype2.git
+[submodule "lib/box2d"]
+	path = lib/box2d
+	url = https://github.com/EDToaster/box2d.git

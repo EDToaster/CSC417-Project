@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Types.hpp"
 
 #include <box2d/b2_api.h>
 #include <box2d/b2_math.h>
@@ -9,7 +8,8 @@
 #include <box2d/b2_polygon_shape.h>
 #include <box2d/b2_fixture.h>
 
-#define PIXELS_PER_METRE 200
+#include "Types.hpp"
+#include "Marching.hpp"
 
 namespace Simulation {
 
@@ -122,10 +122,12 @@ namespace Simulation {
         const ParticleType* currentParticleType;
 
         std::vector<RigidBody> rigidBodies;
+        std::vector<MarchingSquares::Contour> contours;
         b2Vec2 gravity;
         b2World world;
 
         Grid grid;
+        ui8* solidBuffer;
 
         // game states, should probably put this somewhere else
         bool paused;
@@ -147,23 +149,34 @@ namespace Simulation {
             groundBodyDef.position.Set(0, -10);
             b2Body* groundBody = world.CreateBody(&groundBodyDef);
             b2PolygonShape groundBox;
-            groundBox.SetAsBox(50, 10);
+            groundBox.SetAsBox(10000, 10);
             groundBody->CreateFixture(&groundBox, 0);
 
-            // create dynamic body
-            b2BodyDef bodyDef;
-            bodyDef.type = b2_dynamicBody;
-            bodyDef.position.Set(0, 4);
-            b2Body* body = world.CreateBody(&bodyDef);
-            b2PolygonShape dynamicBox;
-            dynamicBox.SetAsBox(1, 1);
-            b2FixtureDef fixtureDef;
-            fixtureDef.shape = &dynamicBox;
-            fixtureDef.density = 1.0f;
-            fixtureDef.friction = 0.3f;
-            body->CreateFixture(&fixtureDef);
+            // create dynamic bodies
+            for (int i = 0; i < 10; i++) {
+                float xpos = 100 + 10 * i;
 
-            rigidBodies.push_back({ body });
+                b2BodyDef bodyDef;
+                bodyDef.type = b2_dynamicBody;
+                bodyDef.position.Set(xpos, xpos);
+                b2Body* body = world.CreateBody(&bodyDef);
+                b2PolygonShape dynamicBox;
+                dynamicBox.SetAsBox(20, 10);
+                b2FixtureDef fixtureDef;
+                fixtureDef.shape = &dynamicBox;
+                fixtureDef.density = 1.0f;
+                fixtureDef.friction = 0.3f;
+                body->CreateFixture(&fixtureDef);
+
+                rigidBodies.push_back({ body });
+            }
+
+            // allocate solid buffer
+            solidBuffer = new ui8[width * height];
+        }
+
+        ~Simulation() {
+            delete[] solidBuffer;
         }
 
         std::vector<glm::ivec2> SAND_UPDATE_ORDER = { {0, -1}, {1, -1}, {-1, -1} };
@@ -310,9 +323,15 @@ namespace Simulation {
                 grid(i).updated = false;
             }
 
-            // 
+            /*
+                So why are we altering the update direction every tick?
+                Because we don't want to bias the update in a particular direction, since the
+                simulation should be symmetric.
+
+                For example, if we were to set dir = 0 on every tick, water will move 
+                more readily leftwards, and falling sand will move more readily rightwards. 
+            */
             int dir = tick % 4;
-            dir = 0;
             if (dir == 0) {
                 for (i64 y = 0; y < height; y++) {
                     for (i64 x = 0; x < width; x++) {
@@ -342,6 +361,16 @@ namespace Simulation {
                 }
             }
             
+            // flush the data into the solid buffer
+            for (i64 y = 0; y < height; y++) {
+                for (i64 x = 0; x < width; x++) {
+                    solidBuffer[y * width + x] = grid(x, y).t->isSolid ? 1 : 0;
+                }
+            }
+
+            // do marching squares
+            MarchingSquares::MarchingSquares(width, height, solidBuffer, contours);
+            
             // simulate rigid bodies
             float timestep = 1.0 / 60;
             i32 velIters = 6, posIters = 2;
@@ -354,7 +383,7 @@ namespace Simulation {
                 float angle = body->GetAngle();
 
                 // what is this filthy printf statement doing here!
-                printf("%4.2f %4.2f %4.2f\n", pos.x, pos.y, angle);
+                // printf("%4.2f %4.2f %4.2f\n", pos.x, pos.y, angle);
             }
         }
     };
