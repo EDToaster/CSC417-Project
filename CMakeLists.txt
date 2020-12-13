@@ -7,6 +7,9 @@ add_executable(main
   src/glError.hpp
   src/glError.cpp
   src/main.cpp
+  src/UI.hpp
+  src/Types.hpp
+  src/Simulation.hpp
   src/Shader.hpp
   src/Shader.cpp)
 
@@ -29,5 +32,10 @@ target_link_libraries(main PRIVATE glm)
 # freetype2
 add_subdirectory(lib/freetype2 EXCLUDE_FROM_ALL)
 target_link_libraries(main PRIVATE freetype)
+
+# box2d
+option(BOX2D_BUILD_TESTBED "Build the Box2D testbed" OFF)
+add_subdirectory(lib/box2d EXCLUDE_FROM_ALL)
+target_link_libraries(main PRIVATE box2d)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT main)

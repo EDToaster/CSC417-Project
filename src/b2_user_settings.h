@@ -1,0 +1,1 @@
+#define b2_lengthUnitsPerMeter 200.0f
