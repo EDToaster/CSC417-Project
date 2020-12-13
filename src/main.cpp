@@ -16,14 +16,12 @@
 #include <glm/glm.hpp>
 
 #include "Shader.hpp"
-#include "Enum.hpp"
+#include "Types.hpp"
+#include "UI.hpp"
 
 #define SHADER_DIR "../shader/"
-#define PI 3.141592653589793238462643383279502884
+#define TEXTURES_DIR "../assets/textures/"
 
-typedef uint64_t ui64;
-typedef int64_t i64;
-typedef int32_t i32;
 
 inline double noise() {
     ui64 r = rand();
@@ -32,57 +30,7 @@ inline double noise() {
     return r / double(RAND_MAX);
 }
 
-void ScreenToOpenGL(const glm::ivec2& disp_res, i64 x, i64 y, GLfloat& glx, GLfloat& gly) {
-    glx = 2 * x / double(disp_res.x) - 1.0;
-    gly = 2 * (disp_res.y - y) / double(disp_res.y) - 1.0;
-}
-
 namespace Simulation {
-
-    class Display {
-    public:
-        Display(const i64 id, i64 x, i64 y, i64 w, i64 h, i64 o, glm::vec3 fill_col) : id(id), x(x), y(y), w(w), h(h), o(o), fill_col(fill_col) {};
-        const i64 id, x, y, w, h, o;
-        glm::vec3 fill_col;
-    };
-
-    class UIElements {
-    public:
-        glm::ivec2 disp_res;
-
-        UIElements(glm::ivec2 disp_res): disp_res(disp_res) {};
-        std::vector<Display> displays;
-        void AddDisplay(Display d) {
-            displays.push_back(d);
-        }
-
-        void drawRect(i64 p1x, i64 p1y, i64 p2x, i64 p2y) {
-            GLfloat sc1x, sc1y, sc2x, sc2y;
-            ScreenToOpenGL(disp_res, p1x, p1y, sc1x, sc1y);
-            ScreenToOpenGL(disp_res, p2x, p2y, sc2x, sc2y);
-            glRectd(sc1x, sc1y, sc2x, sc2y);
-        }
-
-        void Render(int selectedid) {
-            for (auto d : displays) {
-                if (d.id == selectedid) {
-                    glColor3d(1, 1, 1);
-                } else {
-                    glColor3d(0, 0, 0);
-                }
-
-                drawRect(d.x - d.o, d.y - d.o, d.x + d.w + d.o, d.y + d.h + d.o);
-
-                glColor3d(d.fill_col.x, d.fill_col.y, d.fill_col.z);
-                drawRect(d.x, d.y, d.x + d.w, d.y + d.h);
-
-                // convert to opengl coords
-                //std::cout << d.x << " " << d.y << " " << sc1x << " " << sc1y << std::endl;
-                //return;
-                
-            }
-        }
-    };
 
     class ParticleType {
     public:
@@ -227,27 +175,7 @@ namespace Simulation {
             bool preferDown = t->dens > AIR->dens;
 
             Particle* swap = nullptr;
-            //glm::ivec2 newpos;
             double density = preferDown ? INFINITY : 0.0;
-            //for (float fac = 0.1; fac <= 1.0; fac += 0.1) {
-            //    int64_t sx = x + (fac * p.vel.x);
-            //    int64_t sy = y + (fac * p.vel.y);
-            //    if ((sx != x || sy != y) && grid.InBounds(sx, sy)) {
-            //        Particle& candidate = grid(sx, sy);
-            //        if (candidate.t == AIR || candidate.t == WATER) {
-            //            swap = &candidate;
-            //        }
-            //        else {
-            //            break;
-            //        }
-            //    }
-            //}
-
-
-            // apply velocity update 
-            // 1. iterate through the positions from here to here + vel
-            //	  if there is an airspace in any of these spaces, swap.
-            // 2. If there are no airspaces, go to direct neighbours
 
             // pick which air pocket to swap with
             if (!swap) {
@@ -265,8 +193,6 @@ namespace Simulation {
                         if ((preferDown && candidateDensity < density) || (!preferDown && candidateDensity > density)) {
                             density = candidateDensity;
                             swap = &candidate;
-                            //p.vel = { 0, 0 };
-                            //break;
                         }
                     }
                 }
@@ -375,8 +301,9 @@ namespace Simulation {
                 grid(i).updated = false;
             }
 
-
+            // 
             int dir = tick % 4;
+            dir = 0;
             if (dir == 0) {
                 for (i64 y = 0; y < height; y++) {
                     for (i64 x = 0; x < width; x++) {
@@ -461,6 +388,7 @@ GLFWwindow* InitializeAndCreateWindow(std::string title, i64 width, i64 height) 
     //glEnable(GL_DEPTH_TEST);  // enable depth-testing
     //glDepthFunc(GL_LESS);  // depth-testing interprets a smaller value as "closer"
 
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     // vsync
     glfwSwapInterval(false);
     std::cout << "Window Created" << std::endl;
@@ -520,27 +448,7 @@ void scroll_callback(GLFWwindow* window, double xoff, double yoff) {
     simptr->radius = std::clamp(simptr->radius + yoff, 1.0, 100.0);
 }
 
-void DrawCircle(const glm::ivec2& disp_res, i64 sx, i64 sy, i64 srx, i64 sry) {
 
-    GLfloat x, y, rx, ry;
-    ScreenToOpenGL(disp_res, sx, sy, x, y);
-    ScreenToOpenGL(disp_res, srx, sry, rx, ry);
-
-    int i;
-    int triangleAmount = 40; //# of triangles used to draw circle
-
-    //GLfloat radius = 0.8f; //radius
-    GLfloat twicePi = 2.0f * PI;
-
-    glBegin(GL_LINE_LOOP);
-    for (i = 0; i <= triangleAmount; i++) {
-        glVertex2f(
-            x + ((rx + 1) * cos(i * twicePi / triangleAmount)),
-            y + ((ry - 1) * sin(i * twicePi / triangleAmount))
-        );
-    }
-    glEnd();
-}
 
 std::vector<char> readFile(const char* filename)
 {
@@ -554,44 +462,43 @@ std::vector<char> readFile(const char* filename)
 }
 
 int main(int argc, const char* argv[]) {
-    i64 simwidth = 400, simheight = 300, renwidth = 1200, renheight = 900;
+    i64 simwidth = 40, simheight = 30, renwidth = 1200, renheight = 900;
     glm::ivec2 renres{renwidth, renheight};
 
     // initialize simulation from file
     Simulation::Simulation sim("Powder Sim", simwidth, simheight);
-    Simulation::UIElements ui(renres);
+
+    UI::UIRenderer ui(renres);
+    ui.AddText(UI::Text("text"));
 
     int64_t x = 10, y = 10, w = 20, h = 20;
     for (auto t : Simulation::types) {
         if (t == Simulation::AIR) continue;
         std::cout << t->name << std::endl;
-        ui.AddDisplay(Simulation::Display(t->id, x, y, w, h, 5, glm::vec3(0.5, 0.5, 0.5)));
+        ui.AddDisplay(UI::Display(t->id, x, y, w, h, 5, glm::vec3(0.5, 0.5, 0.5)));
         x += 10 + w;
     }
 
-    for (auto d : ui.displays) {
-        std::cout << d.x << " " << d.y << std::endl;
+
+    /*std::vector<char> fc = readFile(TEXTURES_DIR "spiral.b");
+    if (fc.size() != simwidth * simheight) {
+        std::cerr << "Simulation requires binary file of size " << simwidth * simheight << " bytes, one of " << fc.size() << " bytes was provided." << std::endl;
+        return 1;
     }
-
-    //std::vector<char> fc = readFile("../assets/s1.b");
-    //if (fc.size() != simwidth * simheight) {
-    //    std::cerr << "Simulation requires binary file of size " << simwidth * simheight << " bytes, one of " << fc.size() << " bytes was provided." << std::endl;
-    //    return 1;
-    //}
-
-    //for (i64 i = 0; i < sim.height; i++) {
-    //    for (i64 j = 0; j < sim.width; j++) {
-    //        char id = fc[(sim.height - i - 1) * sim.width + j];
-    //        const Simulation::ParticleType* t = Simulation::types[id];
-
-    //        if (t == Simulation::FIRE) {
-    //            InitializeFire(sim.grid(j, i), Simulation::OIL);
-    //        }
-    //        else {
-    //            InitializeNormal(sim.grid(j, i), t);
-    //        }
-    //    }
-    //}
+    
+    for (i64 i = 0; i < sim.height; i++) {
+        for (i64 j = 0; j < sim.width; j++) {
+            char id = fc[(sim.height - i - 1) * sim.width + j];
+            const Simulation::ParticleType* t = Simulation::types[id];
+    
+            if (t == Simulation::FIRE) {
+                InitializeFire(sim.grid(j, i), Simulation::OIL);
+            }
+            else {
+                InitializeNormal(sim.grid(j, i), t);
+            }
+        }
+    }*/
 
 
     GLFWwindow* window = InitializeAndCreateWindow(std::string("CSC417 Project: ") + sim.name, renwidth, renheight);
@@ -602,7 +509,6 @@ int main(int argc, const char* argv[]) {
 
     glm::vec2 simResolution(sim.width, sim.height);
     glm::vec2 renderScale(float(renwidth) / sim.width, float(renheight) / sim.height);
-
 
     // setup ssbo   
     GLuint ssbo;
@@ -654,7 +560,7 @@ int main(int argc, const char* argv[]) {
         // draw circle around 
         glColor3f(1, 1, 1);
         glLineWidth(5);
-        DrawCircle(renres, mx, my, sim.radius * renderScale.x, sim.radius * renderScale.y);
+        UI::DrawCircle(renres, mx, my, sim.radius * renderScale.x, sim.radius * renderScale.y);
 
 
         glfwSwapBuffers(window);
