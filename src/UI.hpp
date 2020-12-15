@@ -141,7 +141,7 @@ namespace UI {
            0xff, 0xc0, 0xff, 0xc0 };
 
         void Render(int selectedid) {
-            // draw text
+            // draw displays
             for (auto d : displays) {
                 if (d.id == selectedid) {
                     glColor3d(1, 1, 1);

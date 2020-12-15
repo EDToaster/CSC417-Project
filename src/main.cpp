@@ -14,7 +14,18 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
-#define B2_USER_SETTINGS
+/***** USER SETTINGS *****/
+#define SIMULATE_RIGID_BODIES   /* Simulate using rigid body system */
+#define DOUGLAS_PEUCKER         /* Approximate world particle's Rigid body boundaries using Douglas Peucker Algorithm */
+//#define DEBUG_DRAW              /* Draw rigid body lines */
+#define LOAD_FROM_FILE          /* Load binary file as initial simulation state */ 
+
+#define SIM_WIDTH 400
+#define SIM_HEIGHT 300
+#define RENDER_WIDTH 1200
+#define RENDER_HEIGHT 900
+
+/***** END SETTINGS  *****/
 
 #include "Shader.hpp"
 #include "Types.hpp"
@@ -25,7 +36,8 @@
 #define SHADER_DIR "../shader/"
 #define TEXTURES_DIR "../assets/textures/"
 
-GLFWwindow* InitializeAndCreateWindow(std::string title, i64 width, i64 height) {
+
+GLFWwindow* InitializeAndCreateWindow(std::string title, glm::ivec2 renderResolution) {
     std::cout << "Initializing OpenGL" << std::endl;
 
     // initialize the GLFW library
@@ -33,16 +45,8 @@ GLFWwindow* InitializeAndCreateWindow(std::string title, i64 width, i64 height) 
     throw std::runtime_error("Couldn't init GLFW");
     }
 
-    // setting the opengl version
-    //int major = 3;
-    //int minor = 2;
-    //glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, major);
-    //glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, minor);
-    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
     // create the window
-    GLFWwindow* window = glfwCreateWindow(width, height, title.c_str(), NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(renderResolution.x, renderResolution.y, title.c_str(), NULL, NULL);
     if (!window) {
         glfwTerminate();
         throw std::runtime_error("Couldn't create a window");
@@ -71,16 +75,20 @@ GLFWwindow* InitializeAndCreateWindow(std::string title, i64 width, i64 height) 
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     // vsync
-    glfwSwapInterval(false);
+    glfwSwapInterval(false); 
+    glEnable(GL_TEXTURE_2D);
     std::cout << "Window Created" << std::endl;
     return window;
 }
 
-ShaderProgram InitializeAndCreateShaders() {
-    //Shader basevert(SHADER_DIR "base.vert", GL_VERTEX_SHADER);
-    Shader basefrag(SHADER_DIR "base.frag", GL_FRAGMENT_SHADER);
+ShaderProgram CreateBaseShader() {
+    Shader baseFrag(SHADER_DIR "base.frag", GL_FRAGMENT_SHADER);
+    return ShaderProgram({ baseFrag });
+}
 
-    return ShaderProgram({ basefrag });
+ShaderProgram CreateRigidShader() {
+    Shader rigidFrag(SHADER_DIR "rigid.frag", GL_FRAGMENT_SHADER);
+    return ShaderProgram({ rigidFrag });
 }
 
 void key_callback(GLFWwindow* window, i32 key, i32 scancode, i32 action, i32 mods) {
@@ -141,28 +149,19 @@ std::vector<char> readFile(const char* filename)
 }
 
 int main(int argc, const char* argv[]) {
-    i64 simwidth = 400, simheight = 300, renwidth = 1200, renheight = 900;
 
-    glm::ivec2 renres{renwidth, renheight};
+    glm::ivec2 simResolution{ SIM_WIDTH, SIM_HEIGHT };
+    glm::ivec2 renderResolution{ RENDER_WIDTH, RENDER_HEIGHT };
+    glm::vec2 renderScale{ float(RENDER_WIDTH) / SIM_WIDTH, float(RENDER_HEIGHT) / SIM_HEIGHT };
 
     // initialize simulation from file
-    Simulation::Simulation sim("Powder Sim", simwidth, simheight);
-
-    UI::UIRenderer ui(renres);
-    ui.AddText(UI::Text("text"));
-
-    int64_t x = 10, y = 10, w = 20, h = 20;
-    for (auto t : Simulation::types) {
-        if (t == Simulation::AIR) continue;
-        std::cout << t->name << std::endl;
-        ui.AddDisplay(UI::Display(t->id, x, y, w, h, 5, glm::vec3(0.5, 0.5, 0.5)));
-        x += 10 + w;
-    }
+    Simulation::Simulation sim("Powder Sim", simResolution.x, simResolution.y);
 
 
-    /*std::vector<char> fc = readFile(TEXTURES_DIR "spiral.b");
-    if (fc.size() != simwidth * simheight) {
-        std::cerr << "Simulation requires binary file of size " << simwidth * simheight << " bytes, one of " << fc.size() << " bytes was provided." << std::endl;
+#ifdef LOAD_FROM_FILE
+    std::vector<char> fc = readFile(TEXTURES_DIR "noita.b");
+    if (fc.size() != simResolution.x * simResolution.y) {
+        std::cerr << "Simulation requires binary file of size " << simResolution.x * simResolution.y << " bytes, one of " << fc.size() << " bytes was provided." << std::endl;
         return 1;
     }
     
@@ -178,17 +177,28 @@ int main(int argc, const char* argv[]) {
                 InitializeNormal(sim.grid(j, i), t);
             }
         }
-    }*/
+    }
+#endif
 
+    // Initialize UI
+    UI::UIRenderer ui(renderResolution);
+    ui.AddText(UI::Text("text"));
 
-    GLFWwindow* window = InitializeAndCreateWindow(std::string("CSC417 Project: ") + sim.name, renwidth, renheight);
-    ShaderProgram shader = InitializeAndCreateShaders();
+    i64 x = 10, y = 10, w = 20, h = 20;
+    for (auto t : Simulation::types) {
+        if (t == Simulation::AIR) continue;
+        std::cout << t->name << std::endl;
+        ui.AddDisplay(UI::Display(t->id, x, y, w, h, 5, t->col));
+        x += 10 + w;
+    }
+
+    GLFWwindow* window = InitializeAndCreateWindow(std::string("CSC417 Project: ") + sim.name, renderResolution);
+    ShaderProgram baseShader = CreateBaseShader(), rigidShader = CreateRigidShader();
+
     glfwSetWindowUserPointer(window, &sim);
     glfwSetKeyCallback(window, key_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    glm::vec2 simResolution(sim.width, sim.height);
-    glm::vec2 renderScale(float(renwidth) / sim.width, float(renheight) / sim.height);
 
     // setup ssbo   
     GLuint ssbo;
@@ -196,7 +206,7 @@ int main(int argc, const char* argv[]) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo);
 
-    Rendering::Particle* render_data = new Rendering::Particle[sim.width * sim.height];
+    Rendering::Particle* render_data = new Rendering::Particle[simResolution.x * simResolution.y];
 
     i64 tick = 0;
     while (!glfwWindowShouldClose(window)) {
@@ -216,42 +226,74 @@ int main(int argc, const char* argv[]) {
                 Simulation::Particle& p = currentGrid(j, i);
                 render_data[i * sim.width + j].id = p.t->id;
                 if (p.t == Simulation::FIRE) {
-                    render_data[i * sim.width + j].lifetime_ratio = std::clamp(double(p.lifetime) / p.secondary_t->burntime, 0.0, 1.0);
+                    render_data[i * simResolution.x + j].lifetime_ratio = std::clamp(double(p.lifetime) / p.secondary_t->burntime, 0.0, 1.0);
                 }
                 else {
-                    render_data[i * sim.width + j].lifetime_ratio = 0;
+                    render_data[i * simResolution.x + j].lifetime_ratio = 0;
                 }
             }
         }
-        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Rendering::Particle) * sim.width * sim.height, render_data, GL_DYNAMIC_DRAW);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Rendering::Particle) * simResolution.x * simResolution.y, render_data, GL_DYNAMIC_DRAW);
 
         // render
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        shader.use();
-        shader.setUniform("simResolution", simResolution);
-        shader.setUniform("renderScale", renderScale);
+        baseShader.use();
+        baseShader.setUniform("simResolution", glm::vec2{ simResolution });
+        baseShader.setUniform("renderScale", renderScale);
         glRectf(-1, -1, 1, 1);
-        shader.unuse();
+        baseShader.unuse();
 
+#ifdef SIMULATE_RIGID_BODIES
+#ifdef DEBUG_DRAW
         // draw contours
-        glLineWidth(5);
-        glColor3f(1, 1, 1);
-        for (auto contour : sim.contours) {
+        if (sim.paused) {
+            glLineWidth(3);
+            for (auto contour : sim.contours) {
+                float sx, sy, ox, oy;
+                glColor3f(1, 0, 0);
+                glBegin(GL_LINE_LOOP);
+                {
+                    bool firstSeg = false;
+                    for (auto vertex : contour.vertices) {
+                        UI::SimToScreen(renderResolution, renderScale, vertex.x, vertex.y, sx, sy);
+                        UI::ScreenToOpenGL(renderResolution, sx, sy, ox, oy);
+                        glVertex2f(ox, oy);
+                        if (firstSeg) {
+                            glColor3f(1, 1, 1);
+                        }
+                        firstSeg = true;
+                    }
+                } 
+                glEnd();
+            }
+        }
+        else {
+            // Turn on wireframe mode
+            glPolygonMode(GL_FRONT, GL_LINE);
+            glPolygonMode(GL_BACK, GL_LINE);
+            glBegin(GL_TRIANGLES);
             float sx, sy, ox, oy;
-
-            glBegin(GL_LINE_STRIP);
-            {
-                for (auto vertex : contour.vertices) {
-                    UI::SimToScreen(renres, renderScale, vertex.x, vertex.y, sx, sy);
-                    UI::ScreenToOpenGL(renres, sx, sy, ox, oy);
+            for (auto triangle : sim.triangles) {
+                for (int i = 0; i < 3; i++) {
+                    TPPLPoint& p = triangle.GetPoint(i);
+                    UI::SimToScreen(renderResolution, renderScale, p.x, p.y, sx, sy);
+                    UI::ScreenToOpenGL(renderResolution, sx, sy, ox, oy);
                     glVertex2f(ox, oy);
                 }
-            } 
+            }
             glEnd();
+            // Turn off wireframe mode
+            glPolygonMode(GL_FRONT, GL_FILL);
+            glPolygonMode(GL_BACK, GL_FILL);
+
         }
 
+#endif
+
         // draw rigid bodies
+        rigidShader.use();
+
         glColor3f(1, 1, 1);
         for (auto rbody : sim.rigidBodies) {
             // get rigid body position
@@ -272,12 +314,13 @@ int main(int argc, const char* argv[]) {
                     for (int i = 0; i < v_count; i++) {
                         b2Vec2& vpos = body->GetWorldPoint(shape->m_vertices[i]);
 
+                        // transform from sim space to openGL space
                         float sx, sy, ox, oy;
-                        // transform from sim space to screen space
-                        UI::SimToScreen(renres, renderScale, vpos.x, vpos.y, sx, sy);
-                        // transform from screen space to openGL space
-                        UI::ScreenToOpenGL(renres, sx, sy, ox, oy);
+                        UI::SimToScreen(renderResolution, renderScale, vpos.x, vpos.y, sx, sy);
+                        UI::ScreenToOpenGL(renderResolution, sx, sy, ox, oy);
 
+                        // apply texture and draw vertex
+                        glTexCoord2f(shape->m_vertices[i].x / 10.0, shape->m_vertices[i].y / 10.0);
                         glVertex2f(ox, oy);
                     }
                 }
@@ -286,6 +329,8 @@ int main(int argc, const char* argv[]) {
             // draw a dot at the current position
             //UI::DrawCircle(renres, sx, sy, 3, 3);
         }
+        rigidShader.unuse();
+#endif
 
         // draw selectors
         ui.Render(sim.currentParticleType->id);
@@ -293,12 +338,10 @@ int main(int argc, const char* argv[]) {
         // draw circle around 
         glColor3f(1, 1, 1);
         glLineWidth(1);
-        UI::DrawCircle(renres, mx, my, sim.radius * renderScale.x, sim.radius * renderScale.y);
-
+        UI::DrawCircle(renderResolution, mx, my, sim.radius * renderScale.x, sim.radius * renderScale.y);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
-
 
         // GAME LOGIC
         // set mouse pos to current block
@@ -342,7 +385,7 @@ int main(int argc, const char* argv[]) {
         //std::cout << "Tick" << std::endl;
     }
 
-    shader.unuse();
+    baseShader.unuse();
     glfwDestroyWindow(window);
 
 

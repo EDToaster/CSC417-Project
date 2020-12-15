@@ -1,7 +1,7 @@
 from PIL import Image
 import numpy as np
 
-im = Image.open("./spiral.bmp")
+im = Image.open("./noita.bmp")
 indexed = np.array(im)
 
 b = []
@@ -9,6 +9,6 @@ for l in indexed:
     for val in l:
         b.append(val)
 
-with open("./spiral.b", "wb") as f:
+with open("./noita.b", "wb") as f:
     f.write(bytes(b))
     

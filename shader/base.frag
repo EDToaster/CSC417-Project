@@ -64,7 +64,7 @@ void main() {
 	case 9: // cotton
 		col = vec4(.84, .84, .84, 1.0) + render_noise(particleIndex, vec4(0.1, 0.1, 0.1, 0));
 		break;
-	case 10: // cotton
+	case 10: // fuse
 		col = vec4(.30, .30, .30, 1.0) + render_noise(particleIndex, vec4(0.1, 0.1, 0.1, 0));
 		break;
 	default: // air 

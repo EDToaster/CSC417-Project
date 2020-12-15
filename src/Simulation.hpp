@@ -6,20 +6,25 @@
 #include <box2d/b2_world.h>
 #include <box2d/b2_body.h>
 #include <box2d/b2_polygon_shape.h>
+#include <box2d/b2_chain_shape.h>
 #include <box2d/b2_fixture.h>
+#include <algorithm>
 
 #include "Types.hpp"
 #include "Marching.hpp"
+
+#include "polypartition.h"
 
 namespace Simulation {
 
     // PARTICLE STUFF
     class ParticleType {
     public:
-        ParticleType(i64 id, double dens, double flammability, i64 burntime, double acidability, bool movable, bool isSolid, std::string name) :
-            id(id), dens(dens), flammability(flammability), burntime(burntime), acidability(acidability),
+        ParticleType(i64 id, glm::vec3 col, double dens, double flammability, i64 burntime, double acidability, bool movable, bool isSolid, std::string name) :
+            id(id), col(col), dens(dens), flammability(flammability), burntime(burntime), acidability(acidability),
             movable(movable), isSolid(isSolid), name(name) {}
         const i64 id;
+        const glm::vec3 col;
         const double dens;
         const double flammability;
         const i64 burntime;
@@ -29,17 +34,17 @@ namespace Simulation {
         const std::string name;
     };
 
-    const ParticleType air(0, 1, 0, 0, 0, true, false, "Air");
-    const ParticleType sand(1, 60, 0, 0, .2, true, true, "Sand");
-    const ParticleType water(2, 5, 0, 0, 0, true, false, "Water");
-    const ParticleType oil(3, 2, .04, 3000, 0, true, false, "Oil");
-    const ParticleType wood(4, -1, .001, 10000, .02, false, true, "Wood");
-    const ParticleType fire(5, -1, 0, 0, 0, false, false, "Fire");
-    const ParticleType smoke(6, .9999, 0, 0, 0, true, false, "Smoke");
-    const ParticleType gunpowder(7, 40, 1, 50, .2, true, true, "Gunpowder");
-    const ParticleType acid(8, 5.001, 0, 0, 0, true, false, "Acid");
-    const ParticleType cotton(9, -1, .05, 1000, .5, false, true, "Cotton");
-    const ParticleType fuse(10, -1, .3, 200, .5, false, true, "Fuse");
+    const ParticleType air(0, glm::vec3{0, 0, 0}, 1, 0, 0, 0, true, false, "Air");
+    const ParticleType sand(1, glm::vec3{ .7, .5, 0.26 }, 60, 0, 0, .2, true, true, "Sand");
+    const ParticleType water(2, glm::vec3{ 0.2, 0.3, 0.8 }, 5, 0, 0, 0, true, false, "Water");
+    const ParticleType oil(3, glm::vec3{ 0.8, 0.6, 0.4 }, 2, .04, 3000, 0, true, false, "Oil");
+    const ParticleType wood(4, glm::vec3{ 0.5, 0.2, 0.1 }, -1, .001, 10000, .02, false, true, "Wood");
+    const ParticleType fire(5, glm::vec3{ 0.7, 0.1, 0.0 }, -1, 0, 0, 0, false, false, "Fire");
+    const ParticleType smoke(6, glm::vec3{ 0.1, 0.1, 0.1 }, .9999, 0, 0, 0, true, false, "Smoke");
+    const ParticleType gunpowder(7, glm::vec3{ 0.25, 0.25, 0.25 }, 40, 1, 50, .2, true, true, "Gunpowder");
+    const ParticleType acid(8, glm::vec3{ 0.25, .9, .5 }, 5.001, 0, 0, 0, true, false, "Acid");
+    const ParticleType cotton(9, glm::vec3{ .84, .84, .84 }, -1, .05, 1000, .5, false, true, "Cotton");
+    const ParticleType fuse(10, glm::vec3{ .30, .30, .30 }, -1, .3, 200, .5, false, true, "Fuse");
 
     const ParticleType* AIR = &air;
     const ParticleType* SAND = &sand;
@@ -121,10 +126,13 @@ namespace Simulation {
         ui64 width, height;
         const ParticleType* currentParticleType;
 
+#ifdef SIMULATE_RIGID_BODIES
         std::vector<RigidBody> rigidBodies;
+        TPPLPolyList triangles;
         std::vector<MarchingSquares::Contour> contours;
         b2Vec2 gravity;
         b2World world;
+#endif
 
         Grid grid;
         ui8* solidBuffer;
@@ -138,38 +146,50 @@ namespace Simulation {
             currentParticleType(SAND),
             grid(width, height),
             paused(true),
-            radius(5.0), gravity(0, -10),
+            radius(5.0)
+#ifdef SIMULATE_RIGID_BODIES
+            , gravity(0, -10),
             world(gravity)
+#endif
         {
 
             // setup box2d
 
             // create bounding box
+#ifdef SIMULATE_RIGID_BODIES
             b2BodyDef groundBodyDef;
-            groundBodyDef.position.Set(0, -10);
+            groundBodyDef.position.Set(0, 0);
             b2Body* groundBody = world.CreateBody(&groundBodyDef);
-            b2PolygonShape groundBox;
-            groundBox.SetAsBox(10000, 10);
+            b2ChainShape groundBox;
+
+            b2Vec2 groundBoxVerts[4] = { {0, 0}, {0, (float)height}, {(float)width, (float)height}, {(float)width, 0} };
+            b2Vec2 dynamicBoxVerts[4] = { {0, 0}, {10, 5}, {5, 10}, {0, 10} };
+            groundBox.CreateLoop(groundBoxVerts, 4);
             groundBody->CreateFixture(&groundBox, 0);
 
             // create dynamic bodies
-            for (int i = 0; i < 10; i++) {
-                float xpos = 100 + 10 * i;
+            for (int i = 0; i < 5; i++) {
+                for (int j = 0; j < 5; j++) {
+                    float xpos = 100 + 22 * i;
+                    float ypos = 150 + 22 * j;
 
-                b2BodyDef bodyDef;
-                bodyDef.type = b2_dynamicBody;
-                bodyDef.position.Set(xpos, xpos);
-                b2Body* body = world.CreateBody(&bodyDef);
-                b2PolygonShape dynamicBox;
-                dynamicBox.SetAsBox(20, 10);
-                b2FixtureDef fixtureDef;
-                fixtureDef.shape = &dynamicBox;
-                fixtureDef.density = 1.0f;
-                fixtureDef.friction = 0.3f;
-                body->CreateFixture(&fixtureDef);
+                    b2BodyDef bodyDef;
+                    bodyDef.type = b2_dynamicBody;
+                    bodyDef.position.Set(xpos, ypos);
+                    b2Body* body = world.CreateBody(&bodyDef);
+                    b2PolygonShape dynamicBox;
+                    dynamicBox.Set(dynamicBoxVerts, 4);
+                    //dynamicBox.SetAsBox(10, 10);
+                    b2FixtureDef fixtureDef;
+                    fixtureDef.shape = &dynamicBox;
+                    fixtureDef.density = 1.0f;
+                    fixtureDef.friction = 0.3f;
+                    body->CreateFixture(&fixtureDef);
 
-                rigidBodies.push_back({ body });
+                    rigidBodies.push_back({ body });
+                }
             }
+#endif
 
             // allocate solid buffer
             solidBuffer = new ui8[width * height];
@@ -364,12 +384,56 @@ namespace Simulation {
             // flush the data into the solid buffer
             for (i64 y = 0; y < height; y++) {
                 for (i64 x = 0; x < width; x++) {
-                    solidBuffer[y * width + x] = grid(x, y).t->isSolid ? 1 : 0;
+                    solidBuffer[y * width + x] = grid(x, y).t == FIRE ? grid(x, y).secondary_t->isSolid : grid(x, y).t->isSolid;
                 }
             }
 
+#ifdef SIMULATE_RIGID_BODIES
             // do marching squares
             MarchingSquares::MarchingSquares(width, height, solidBuffer, contours);
+
+            // convert contours to polygons using polypartition
+            TPPLPartition partition;
+            
+            TPPLPolyList polyList;
+            
+            for (auto contour : contours) {
+                std::reverse(contour.vertices.begin(), contour.vertices.end());
+
+                TPPLPoly poly;
+                i64 numPoints = contour.vertices.size();
+                poly.Init(numPoints);
+                for (int i = 0; i < numPoints; i++) {
+                    TPPLPoint& p = poly.GetPoint(i);
+                    p.x = contour.vertices[i].x;
+                    p.y = contour.vertices[i].y;
+                }
+
+                polyList.push_back(poly);
+            }
+
+            triangles.clear();
+            partition.Triangulate_MONO(&polyList, &triangles);
+
+            std::vector<b2Body*> staticBodies;
+
+            // add these constraints to the world!
+            b2BodyDef posDef;
+            posDef.position.Set(0, 0);
+
+            b2Vec2 triBuffer[3];
+            for (auto triangle : triangles) {
+                triBuffer[0] = { (float) triangle.GetPoint(0).x, (float) triangle.GetPoint(0).y };
+                triBuffer[1] = { (float) triangle.GetPoint(1).x, (float) triangle.GetPoint(1).y };
+                triBuffer[2] = { (float) triangle.GetPoint(2).x, (float) triangle.GetPoint(2).y };
+
+                b2Body* groundBody = world.CreateBody(&posDef);
+                b2PolygonShape triangleShape;
+                triangleShape.Set(triBuffer, 3);
+                groundBody->CreateFixture(&triangleShape, 0);
+
+                staticBodies.push_back(groundBody);
+            }
             
             // simulate rigid bodies
             float timestep = 1.0 / 60;
@@ -385,6 +449,11 @@ namespace Simulation {
                 // what is this filthy printf statement doing here!
                 // printf("%4.2f %4.2f %4.2f\n", pos.x, pos.y, angle);
             }
+
+            for (auto staticBody : staticBodies) {
+                world.DestroyBody(staticBody);
+            }
+#endif
         }
     };
 };

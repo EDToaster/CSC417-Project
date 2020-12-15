@@ -12,7 +12,10 @@ add_executable(main
   src/Simulation.hpp
   src/Marching.hpp
   src/Shader.hpp
-  src/Shader.cpp)
+  src/Shader.cpp
+  src/polypartition.cpp
+  src/polypartition.h
+  )
 
 set_property(TARGET main PROPERTY CXX_STANDARD 17)
 target_compile_options(main PRIVATE -Wall)

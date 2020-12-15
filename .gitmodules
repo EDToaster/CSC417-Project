@@ -13,3 +13,6 @@
 [submodule "lib/box2d"]
 	path = lib/box2d
 	url = https://github.com/EDToaster/box2d.git
+[submodule "lib/polypartition"]
+	path = lib/polypartition
+	url = https://github.com/ivanfratric/polypartition.git
