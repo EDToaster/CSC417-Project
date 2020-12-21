@@ -1,7 +1,7 @@
 CSC417 Project: Exploring the Tech of Noita
 ===========================================
 
-[Youtube Explanation](https://youtu.be/ixqOd76E_bU)
+[![Recreating Noita](https://img.youtube.com/vi/ixqOd76E_bU/0.jpg)](https://www.youtube.com/watch?v=ixqOd76E_bU)
 
 ## User Guide
 This project has been test-built on Windows using Visual Studio 2019. I'm not sure if they work on other platforms.
