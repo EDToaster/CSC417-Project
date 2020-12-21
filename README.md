@@ -14,7 +14,7 @@ This project has been test-built on Windows using Visual Studio 2019. I'm not su
 1. Run `cmake ..`
 1. Open the VS `RecreatingNoita.sln` file.
 1. Under solution explorer, right click `main` > select Properties > Change `Output Directory` to the `build/` directory you created in step 2.
-1. Build and run the executable.
+1. Build and run the executable using `RELEASE` mode!
 
 ### Controls
 * Use the number keys to select a material (the name of the material is outputted into the console).
