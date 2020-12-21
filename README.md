@@ -1,6 +1,7 @@
 CSC417 Project: Exploring the Tech of Noita
 ===========================================
 
+Youtube Explanation:
 [![Recreating Noita](https://img.youtube.com/vi/ixqOd76E_bU/0.jpg)](https://www.youtube.com/watch?v=ixqOd76E_bU)
 
 ## User Guide
