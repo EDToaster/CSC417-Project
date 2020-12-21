@@ -1,72 +1,35 @@
-OpenGL CMake Skeleton [![Build Status](https://travis-ci.org/ArthurSonzogni/OpenGL_CMake_Skeleton.svg?branch=master)](https://travis-ci.org/ArthurSonzogni/OpenGL_CMake_Skeleton)
-=======================
+CSC417 Project: Exploring the Tech of Noita
+===========================================
 
-A ready to use C++11 CMake OpenGL skeleton using **GLFW**, **Glew** and **glm**. (use git submodules)
 
-It compiles on:
- * **WebAssembly**  (on branch webassembly. See instruction below)
- * Linux
- * Windows
- * Mac
+## User Guide
+This project has been test-built on Windows using Visual Studio 2019. I'm not sure if they work on other platforms.
 
-It can compile for the Web with WebAssembly thanks to emscripten, as well as on
-Linux, Windows and Mac.
+### Setup (Windows)
+1. Clone this repository using `git clone --recursive` to get all of the submodules as well.
+1. Create and `cd` into the `build` directory at the base of the repository.
+1. Run `cmake ..`
+1. Open the VS `RecreatingNoita.sln` file.
+1. Under solution explorer, right click `main` > select Properties > Change `Output Directory` to the `build/` directory you created in step 2.
+1. Build and run the executable.
 
-Shader class and example Application are included.
+### Controls
+* Use the number keys to select a material (the name of the material is outputted into the console).
+* Left click to place material, right click to erase material
+* Scroll wheel to change the radius of the brush
+* Space bar to start/stop the simulation. By default, the simulation starts paused.
+* Tab to spawn rigid body bouncy balls (only if `SIMULATE_RIGID_BODIES` is set)
 
-![output result](output.gif)
+### Additional Configurations
+Additional configuration is under the `USER SETTINGS` section of `main.cpp`.
 
-I am open to any comments and contributions.
-
-Clone (With submodules):
-========================
-
-```
-git clone --recursive git@github.com:ArthurSonzogni/OpenGL_CMake_Skeleton.git
-```
-
-Alternatively, if you don't used the --recursive option, you can type:
-```bash
-git submodule init
-git submodule update
-```
-
-usage (WebAssembly) : 
----------------------
-Switch to the webassembly branch
-```
-git checkout webassembly
-```
-
-Install emscripten, then
-```bash
-mkdir build_emscripten
-cd build_emscripten
-CC=emcc CXX=em++ cmake ..
-make
-python -m SimpleHTTPServer 8000
-```
-
-Now, visit [http://localhost:8000](http://localhost:8000)
-
-usage (Linux) : 
----------------
-Some standard library to install:
-```bash
-sudo apt-get install cmake libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
-
-Open the directory into a terminal
-```bash
-mkdir build
-cd build
-cmake ..
-./main
-```
-
-usage (Windows) :
------------------
-For instance :
-* cmake-gui .
-* Configure (Choose for example Visual Studio generator)
-* Generate
-Launch the generated project in your favorite IDE and run it.
+| Variable | Use | Default |
+| -------- | --- | ------- |
+| `SIMULATE_RIGID_BODIES`   | Set this compile flag if you want to simulate rigid bodies. | SET |
+| `SPAWN_BODY`              | Set this value to one of `NONE`, `PENDULUM`, `BOUNCE`, or `CAR` to spawn initial rigid bodies. | NONE |
+| `DOUGLAS_PEUCKER`         | Set this compile flag if you want to approximate particle contours with the Douglas-Peucker algorithm. Greatly increases performance | SET |
+| `DEBUG_DRAW`              | Set this compile flag if you want to show calculated contours. | UNSET |
+| `LOAD_FROM_FILE`          | Set this compile flag if you want to load a file from disk as initial falling sand state | UNSET |
+| `TEXTURE_FILE`            | Set this value to a `.b` file name under the `/assets/` folder. This is the initial state of the falling sand simulation | |
+| `SIM_WIDTH`, `SIM_HEIGHT` | The dimensions of the simulation. Lower this if the simulation runs too slow. | 400, 300 |
+| `RENDER_WIDTH`, `RENDER_HEIGHT` | The dimensions of the render window. Leave this as a whole number multiple of `SIM_WIDTH`, `SIM_HEIGHT` | 1200, 900 |
