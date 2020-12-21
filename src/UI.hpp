@@ -25,7 +25,7 @@ namespace UI {
         sy = disp_res.y - py * ren_scale.y;
     }
 
-    void DrawCircle(const glm::ivec2& disp_res, i64 sx, i64 sy, i64 srx, i64 sry) {
+    void DrawCircle(const glm::ivec2& disp_res, i64 sx, i64 sy, i64 srx, i64 sry, bool includeCenter) {
 
         GLfloat x, y, rx, ry;
         UI::ScreenToOpenGL(disp_res, sx, sy, x, y);
@@ -38,6 +38,9 @@ namespace UI {
         GLfloat twicePi = 2.0f * PI;
 
         glBegin(GL_LINE_LOOP);
+        if (includeCenter) {
+            glVertex2f(x, y);
+        }
         for (i = 0; i <= triangleAmount; i++) {
             glVertex2f(
                 x + ((rx + 1) * cos(i * twicePi / triangleAmount)),

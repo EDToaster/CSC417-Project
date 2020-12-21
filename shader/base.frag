@@ -11,13 +11,17 @@ layout(std430, binding = 1) buffer particlelayout
 };
 
 uniform vec2 simResolution;
-uniform vec2 renderScale;
 
 in vec4 gl_FragCoord;
 out vec4 gl_FragColor;
 
 float PHI = 1.61803398874989484820459;  // phi = Golden Ratio   
 float PHIM1 = 0.61803398874989484820459;  // phi = Golden Ratio   
+
+float TWO_PI = 6.28318530718;
+float Directions = 16.0;
+float Quality = 4.0;
+float Size = 2.0;
 
 float gold_noise(in vec2 xy, in float seed){
 	return fract(tan(distance(xy*PHI, xy)*seed)*xy.x);
@@ -32,7 +36,7 @@ vec4 render_noise(in uint ind, in vec4 col) {
 }
 
 void main() {
-	vec2 simCoord = floor(gl_FragCoord.xy) / renderScale;
+	vec2 simCoord = floor(gl_FragCoord.xy);
 	uint particleIndex = uint(simCoord.y) * uint(simResolution.x) + uint(simCoord.x);
 
 	vec4 col;
@@ -72,9 +76,27 @@ void main() {
 		break;
 	}
 
-	// get noise using current id
+	// apply blur
+	uint blendFactor = 0;
+	uint totalIters = 0;
+	vec4 bloomCol = col;	
+    for(float d=0.0; d<TWO_PI; d+=TWO_PI/Directions)
+    {
+		for(float i=1.0/Quality; i<=1.0; i+=1.0/Quality)
+        {
+			totalIters++;
+			vec2 newSamplePoint = simCoord + vec2(cos(d), sin(d)) * Size * i;
+			uint newSampleIndex = uint(newSamplePoint.y) * uint(simResolution.x) + uint(newSamplePoint.x);
 
-	gl_FragColor = col;
+			switch(particles[newSampleIndex].id) {
+			case 5:	bloomCol += render_noise(newSampleIndex, (1 - particles[newSampleIndex].lifetime) * vec4(.1, 0, 0, 1)); blendFactor++; break;
+			case 8: bloomCol += render_noise(newSampleIndex, vec4(.01, .7, 0, 1)); blendFactor++; break;
+			default: break;
+			}
+        }
+    }
+
+	gl_FragColor = mix(col, bloomCol, 0.5);
 	//float i;
 	//float c = modf(float(particleIndex) / 255.0, i);
 	//gl_FragColor = vec4(c, 0, 0, 1.0);

@@ -95,18 +95,18 @@ namespace MarchingSquares {
 		}
 	}
 
-	inline ui8 DataAt(const ui8* data, i64 x, i64 y, i64 w, i64 h) {
-		if (x < 0 || y < 0 || x >= w || y >= h) {
+	inline ui8 DataAt(const ui8* data, i64 xOff, i64 yOff, i64 xStart, i64 yStart, i64 xStride, i64 yStride, i64 w, i64 h) {
+		if (xOff < 0 || yOff < 0 || xOff >= xStride || yOff >= yStride) {
 			return 0;
 		}
 
-		return data[x + y * w];
+		return data[(xOff + xStart) + (yOff + yStart) * w];
 	}
 
-	void MarchingSquares(i64 w, i64 h, ui8* data, std::vector<Contour>& contours) {
+	void MarchingSquares(i64 xStart, i64 yStart, i64 xStride, i64 yStride, i64 w, i64 h, ui8* data, std::vector<Contour>& contours) {
 		contours.clear();
 		// pad zeroes around the states
-		i64 nw = w + 1, nh = h + 1;
+		i64 nw = xStride + 1, nh = yStride + 1;
 		State* states = new State[nw * nh];
 
 		// 000000 <Visited from positive?> <Visited from negative?> 
@@ -118,7 +118,12 @@ namespace MarchingSquares {
 		// map pixel values to states using LUT
 		for (i64 x = 0; x < nw; x++) {
 			for (i64 y = 0; y < nh; y++) {
-				states[x + y * nw] = (DataAt(data, x - 1, y - 1, w, h)) | (DataAt(data, x, y - 1, w, h) << 1) | (DataAt(data, x, y, w, h) << 2) | (DataAt(data, x - 1, y, w, h) << 3);
+				states[x + y * nw] = 
+					(DataAt(data, x - 1, y - 1, xStart, yStart, xStride, yStride, w, h)) | 
+					(DataAt(data, x, y - 1, xStart, yStart, xStride, yStride, w, h) << 1) | 
+					(DataAt(data, x, y, xStart, yStart, xStride, yStride, w, h) << 2) | 
+					(DataAt(data, x - 1, y, xStart, yStart, xStride, yStride, w, h) << 3);
+
 				visited[x + y * nw] = false;
 			}
 		}
@@ -184,7 +189,7 @@ namespace MarchingSquares {
 					nextSegment(states, cx, cy, nw, fromPositive, nx, ny);
 
 					// push current cell onto the list
-					c.vertices.push_back({ cx + (nx - cx) * 0.5, cy + (ny - cy) * 0.1 });
+					c.vertices.push_back({ cx + (nx - cx) * 0.5 + xStart, cy + (ny - cy) * 0.5 + yStart});
 
 					px = cx;
 					py = cy;
@@ -200,6 +205,7 @@ namespace MarchingSquares {
 
 		// douglas peucker them contours!
 		for (auto contour : complexContours) {
+			std::reverse(contour.vertices.begin(), contour.vertices.end());
 #ifdef DOUGLAS_PEUCKER
 			Contour approximation;
 			DouglasPeucker(approximation.vertices, contour.vertices, .5);

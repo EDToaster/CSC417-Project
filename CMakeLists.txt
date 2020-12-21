@@ -42,4 +42,8 @@ option(BOX2D_BUILD_TESTBED "Build the Box2D testbed" OFF)
 add_subdirectory(lib/box2d EXCLUDE_FROM_ALL)
 target_link_libraries(main PRIVATE box2d)
 
+# openmp
+find_package(OpenMP REQUIRED)
+target_link_libraries(main PRIVATE OpenMP::OpenMP_CXX)
+
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT main)

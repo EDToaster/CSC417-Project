@@ -8,7 +8,12 @@
 #include <box2d/b2_polygon_shape.h>
 #include <box2d/b2_chain_shape.h>
 #include <box2d/b2_fixture.h>
+#include <box2d/b2_distance_joint.h>
+#include <box2d/b2_revolute_joint.h>
+#include <box2d/b2_circle_shape.h>
 #include <algorithm>
+#include <thread>
+#include <mutex>
 
 #include "Types.hpp"
 #include "Marching.hpp"
@@ -40,7 +45,7 @@ namespace Simulation {
     const ParticleType oil(3, glm::vec3{ 0.8, 0.6, 0.4 }, 2, .04, 3000, 0, true, false, "Oil");
     const ParticleType wood(4, glm::vec3{ 0.5, 0.2, 0.1 }, -1, .001, 10000, .02, false, true, "Wood");
     const ParticleType fire(5, glm::vec3{ 0.7, 0.1, 0.0 }, -1, 0, 0, 0, false, false, "Fire");
-    const ParticleType smoke(6, glm::vec3{ 0.1, 0.1, 0.1 }, .9999, 0, 0, 0, true, false, "Smoke");
+    const ParticleType smoke(6, glm::vec3{ 0.1, 0.1, 0.1 }, .99999999, 0, 0, 0, true, false, "Smoke");
     const ParticleType gunpowder(7, glm::vec3{ 0.25, 0.25, 0.25 }, 40, 1, 50, .2, true, true, "Gunpowder");
     const ParticleType acid(8, glm::vec3{ 0.25, .9, .5 }, 5.001, 0, 0, 0, true, false, "Acid");
     const ParticleType cotton(9, glm::vec3{ .84, .84, .84 }, -1, .05, 1000, .5, false, true, "Cotton");
@@ -120,24 +125,51 @@ namespace Simulation {
         }
     };
 
+    class QueryAABBCallback : public b2QueryCallback {
+    public:
+        QueryAABBCallback(bool* called) : called(called) {};
+        bool* called;
+        bool ReportFixture(b2Fixture* fixture) {
+            *called = true;
+            return true;
+        }
+    };
+
+    bool BodiesWithinAABB(const b2World& world, const b2AABB& aabb) {
+        // only do this if there is a rigid body in this chunk
+        bool called = false;
+        QueryAABBCallback callback(&called);
+        world.QueryAABB(&callback, aabb);
+        return called;
+    }
+
     class Simulation {
     public:
         std::string name;
         ui64 width, height;
         const ParticleType* currentParticleType;
 
+        /** RIGID BODIES **/
 #ifdef SIMULATE_RIGID_BODIES
         std::vector<RigidBody> rigidBodies;
-        TPPLPolyList triangles;
-        std::vector<MarchingSquares::Contour> contours;
         b2Vec2 gravity;
         b2World world;
+
+        std::mutex triangles_mutex;
+        TPPLPolyList triangles;
+
+#ifdef DEBUG_DRAW
+        std::mutex contours_mutex;
+        std::vector<MarchingSquares::Contour> contours;
 #endif
+#endif
+
 
         Grid grid;
         ui8* solidBuffer;
 
-        // game states, should probably put this somewhere else
+        /** UI STATE **/
+        bool tabPressed;
         bool paused;
         float radius;
 
@@ -146,7 +178,8 @@ namespace Simulation {
             currentParticleType(SAND),
             grid(width, height),
             paused(true),
-            radius(5.0)
+            radius(5.0),
+            tabPressed(false)
 #ifdef SIMULATE_RIGID_BODIES
             , gravity(0, -10),
             world(gravity)
@@ -162,33 +195,95 @@ namespace Simulation {
             b2Body* groundBody = world.CreateBody(&groundBodyDef);
             b2ChainShape groundBox;
 
-            b2Vec2 groundBoxVerts[4] = { {0, 0}, {0, (float)height}, {(float)width, (float)height}, {(float)width, 0} };
-            b2Vec2 dynamicBoxVerts[4] = { {0, 0}, {10, 5}, {5, 10}, {0, 10} };
+            // we give an extra pixel here because of the marching squares optimization
+            b2Vec2 groundBoxVerts[4] = { {-1, -1}, {-1, (float)height + 1}, {(float)width + 1, (float)height + 1}, {(float)width + 1, -1} };
             groundBox.CreateLoop(groundBoxVerts, 4);
-            groundBody->CreateFixture(&groundBox, 0);
+            groundBody->CreateFixture(&groundBox, 1);
 
-            // create dynamic bodies
-            for (int i = 0; i < 5; i++) {
-                for (int j = 0; j < 5; j++) {
-                    float xpos = 100 + 22 * i;
-                    float ypos = 150 + 22 * j;
-
-                    b2BodyDef bodyDef;
-                    bodyDef.type = b2_dynamicBody;
-                    bodyDef.position.Set(xpos, ypos);
-                    b2Body* body = world.CreateBody(&bodyDef);
-                    b2PolygonShape dynamicBox;
-                    dynamicBox.Set(dynamicBoxVerts, 4);
-                    //dynamicBox.SetAsBox(10, 10);
-                    b2FixtureDef fixtureDef;
-                    fixtureDef.shape = &dynamicBox;
-                    fixtureDef.density = 1.0f;
-                    fixtureDef.friction = 0.3f;
-                    body->CreateFixture(&fixtureDef);
-
-                    rigidBodies.push_back({ body });
+#if SPAWN_BODY==PENDULUM
+            for (int i = 0; i < 20; i++) {
+                i64 thisX = 100 + i * 10;
+                b2BodyDef ropeBodyDef;
+                ropeBodyDef.type = (i == 0) ? b2_staticBody : b2_dynamicBody;
+                ropeBodyDef.position.Set(thisX, 200);
+                b2Body* ropeBody = world.CreateBody(&ropeBodyDef);
+                b2PolygonShape ropeShape;
+                ropeShape.SetAsBox(5, i == 19 ? 5 : 0.5);
+                ropeBody->CreateFixture(&ropeShape, 1);
+                rigidBodies.push_back({ ropeBody });
+                if (i > 0) {
+                    b2RevoluteJointDef jd;
+                    // b2DistanceJointDef jd;
+                     //jd.stiffness = 10000;
+                    jd.Initialize(rigidBodies[i].body, rigidBodies[i - 1].body, b2Vec2(thisX - 5, 200));
+                    world.CreateJoint(&jd);
                 }
             }
+#elif SPAWN_BODY==BOUNCE
+            for (int i = 0; i < 20; i++) {
+                i64 thisX = 100 + i * 10;
+                b2BodyDef ropeBodyDef;
+                ropeBodyDef.type = (i == 0 || i == 19) ? b2_staticBody : b2_dynamicBody;
+                ropeBodyDef.position.Set(thisX, 100);
+                b2Body* ropeBody = world.CreateBody(&ropeBodyDef);
+                b2PolygonShape ropeShape;
+                ropeShape.SetAsBox(5, 0.5);
+                ropeBody->CreateFixture(&ropeShape, 1);
+                rigidBodies.push_back({ ropeBody });
+                if (i > 0) {
+                    b2RevoluteJointDef jd;
+                    // b2DistanceJointDef jd;
+                     //jd.stiffness = 10000;
+                    jd.Initialize(rigidBodies[i].body, rigidBodies[i - 1].body, b2Vec2(thisX - 5, 100));
+                    world.CreateJoint(&jd);
+                }
+                if (i == 19) {
+                    //rigidBodies[i].body->SetTransform(b2Vec2(thisX - 5, 160), 0);
+                }
+            }
+#elif SPAWN_BODY==CAR
+
+            // create car body
+            b2BodyDef carbodyDef, w1def, w2def;
+            carbodyDef.type = b2_dynamicBody;
+            w1def.type = b2_dynamicBody;
+            w2def.type = b2_dynamicBody;
+            carbodyDef.position.Set(100, 200);
+            w1def.position.Set(82, 180);
+            w2def.position.Set(128, 180);
+
+            b2Body *carBody, *w1Body, *w2Body;
+            carBody = world.CreateBody(&carbodyDef);
+            w1Body = world.CreateBody(&w1def);
+            w2Body = world.CreateBody(&w2def);
+
+            b2PolygonShape bodyShape;
+            b2CircleShape w1Shape, w2Shape;
+
+            bodyShape.SetAsBox(25, 12.5);
+            w1Shape.m_radius = 7;
+            w2Shape.m_radius = 7;
+
+            carBody->CreateFixture(&bodyShape, 1);
+            b2Fixture* wheelFixture = w1Body->CreateFixture(&w1Shape, 1);
+            wheelFixture->SetFriction(1);
+            w2Body->CreateFixture(&w2Shape, 1);
+
+            b2RevoluteJointDef axle1, axle2;
+            axle1.Initialize(carBody, w1Body, w1def.position);
+            axle1.enableMotor = true;
+            axle1.motorSpeed = -3;
+            axle1.maxMotorTorque = 100000000;
+            axle2.Initialize(carBody, w2Body, w2def.position);
+            world.CreateJoint(&axle1);
+            world.CreateJoint(&axle2);
+            
+
+            
+            rigidBodies.push_back({ carBody });
+            rigidBodies.push_back({ w1Body });
+            rigidBodies.push_back({ w2Body });
+#endif
 #endif
 
             // allocate solid buffer
@@ -338,82 +433,174 @@ namespace Simulation {
             }
         }
 
-        void Tick(i64 tick) {
-            for (i64 i = 0; i < width * height; i++) {
-                grid(i).updated = false;
-            }
+        void TickChunk(i64 i, i64 j, ui8 dir) {
+            i64 xStart = i * CHUNK_SIZE;
+            i64 yStart = j * CHUNK_SIZE;
+            i64 xEnd = std::min<i64>(xStart + CHUNK_SIZE, width);
+            i64 yEnd = std::min<i64>(yStart + CHUNK_SIZE, height);
+            i64 xStride = xEnd - xStart;
+            i64 yStride = yEnd - yStart;
 
+            // tick here
             /*
                 So why are we altering the update direction every tick?
                 Because we don't want to bias the update in a particular direction, since the
                 simulation should be symmetric.
 
-                For example, if we were to set dir = 0 on every tick, water will move 
-                more readily leftwards, and falling sand will move more readily rightwards. 
+                For example, if we were to set dir = 0 on every tick, water will move
+                more readily leftwards, and falling sand will move more readily rightwards.
             */
-            int dir = tick % 4;
             if (dir == 0) {
-                for (i64 y = 0; y < height; y++) {
-                    for (i64 x = 0; x < width; x++) {
+                for (i64 y = yStart; y < yEnd; y++) {
+                    for (i64 x = xStart; x < xEnd; x++) {
                         TickParticle(x, y);
                     }
                 }
             }
             else if (dir == 1) {
-                for (i64 y = 0; y < height; y++) {
-                    for (i64 x = width - 1; x >= 0; x--) {
+                for (i64 y = yStart; y < yEnd; y++) {
+                    for (i64 x = xEnd - 1; x >= xStart; x--) {
                         TickParticle(x, y);
                     }
                 }
             }
             else if (dir == 2) {
-                for (i64 y = height - 1; y >= 0; y--) {
-                    for (i64 x = width - 1; x >= 0; x--) {
+                for (i64 y = yEnd - 1; y >= yStart; y--) {
+                    for (i64 x = xEnd - 1; x >= xStart; x--) {
                         TickParticle(x, y);
                     }
                 }
             }
             else {
-                for (i64 y = height - 1; y >= 0; y--) {
-                    for (i64 x = 0; x < width; x++) {
+                for (i64 y = yEnd - 1; y >= yStart; y--) {
+                    for (i64 x = xStart; x < xEnd; x++) {
                         TickParticle(x, y);
                     }
                 }
             }
-            
+        }
+
+        void Tick(i64 tick) {
+            for (i64 i = 0; i < width * height; i++) {
+                grid(i).updated = false;
+            }
+
+            // find number of chunks
+            i64 xChunks = (i64)((width + (CHUNK_SIZE - 1)) / CHUNK_SIZE);
+            i64 yChunks = (i64)((height + (CHUNK_SIZE - 1)) / CHUNK_SIZE);
+
+            ui8 dir = tick % 4;
+            // round one of four
+#pragma omp parallel for
+            for (int i = 0; i < xChunks; i += 2) {
+#pragma omp parallel for
+                for (int j = 0; j < yChunks; j += 2) {
+                    TickChunk(i, j, dir);
+                }
+            }
+
+#pragma omp parallel for
+            for (int i = 1; i < xChunks; i += 2) {
+#pragma omp parallel for
+                for (int j = 0; j < yChunks; j += 2) {
+                    TickChunk(i, j, dir);
+                }
+            }
+
+#pragma omp parallel for
+            for (int i = 1; i < xChunks; i += 2) {
+#pragma omp parallel for
+                for (int j = 1; j < yChunks; j += 2) {
+                    TickChunk(i, j, dir);
+                }
+            }
+
+#pragma omp parallel for
+            for (int i = 0; i < xChunks; i += 2) {
+#pragma omp parallel for
+                for (int j = 1; j < yChunks; j += 2) {
+                    TickChunk(i, j, dir);
+                }
+            }
+
             // flush the data into the solid buffer
             for (i64 y = 0; y < height; y++) {
                 for (i64 x = 0; x < width; x++) {
-                    solidBuffer[y * width + x] = grid(x, y).t == FIRE ? grid(x, y).secondary_t->isSolid : grid(x, y).t->isSolid;
+                    Particle& p = grid(x, y);
+                    solidBuffer[y * width + x] = p.t == FIRE ? p.secondary_t->isSolid : p.t->isSolid;
+                    //solidBuffer[y * width + x] = p.t != AIR;
                 }
             }
+
+            // reset triangles and contours
+            triangles.clear();
+#ifdef DEBUG_DRAW
+            contours.clear();
+#endif
+
 
 #ifdef SIMULATE_RIGID_BODIES
-            // do marching squares
-            MarchingSquares::MarchingSquares(width, height, solidBuffer, contours);
+#pragma omp parallel for collapse(2) schedule(dynamic)
+            for (int i = 0; i < xChunks; i++) {
+                for (int j = 0; j < yChunks; j++) {
 
-            // convert contours to polygons using polypartition
-            TPPLPartition partition;
-            
-            TPPLPolyList polyList;
-            
-            for (auto contour : contours) {
-                std::reverse(contour.vertices.begin(), contour.vertices.end());
 
-                TPPLPoly poly;
-                i64 numPoints = contour.vertices.size();
-                poly.Init(numPoints);
-                for (int i = 0; i < numPoints; i++) {
-                    TPPLPoint& p = poly.GetPoint(i);
-                    p.x = contour.vertices[i].x;
-                    p.y = contour.vertices[i].y;
+                    i64 xStart = i * CHUNK_SIZE;
+                    i64 yStart = j * CHUNK_SIZE;
+                    i64 xEnd = std::min<i64>(xStart + CHUNK_SIZE, width);
+                    i64 yEnd = std::min<i64>(yStart + CHUNK_SIZE, height);
+                    i64 xStride = xEnd - xStart;
+                    i64 yStride = yEnd - yStart;
+
+                    b2AABB aabb = b2AABB{ b2Vec2((float)xStart, (float)yStart), b2Vec2((float)xEnd, (float)yEnd) };
+
+                    if (!BodiesWithinAABB(world, aabb)) continue;
+
+                    // do marching squares
+                    std::vector<MarchingSquares::Contour> chunkContours;
+                    TPPLPolyList chunkTriangles;
+                    TPPLPartition partition;
+                    TPPLPolyList polyList;
+
+                    MarchingSquares::MarchingSquares(xStart, yStart, xStride, yStride, width, height, solidBuffer, chunkContours);
+
+
+                    // convert contours to polygons using polypartition
+                    for (auto contour : chunkContours) {
+                        TPPLPoly poly;
+                        i64 numPoints = contour.vertices.size();
+                        poly.Init(numPoints);
+                        for (int i = 0; i < numPoints; i++) {
+                            TPPLPoint& p = poly.GetPoint(i);
+                            p.x = contour.vertices[i].x;
+                            p.y = contour.vertices[i].y;
+                        }
+
+                        if (poly.GetOrientation() == TPPL_CW) {
+                            poly.SetHole(true);
+                        }
+
+                        polyList.push_back(poly);
+                    }
+
+                    TPPLPolyList tmpPolys;
+                    partition.RemoveHoles(&polyList, &tmpPolys);
+                    partition.Triangulate_EC(&tmpPolys, &chunkTriangles);
+
+                    // flush triangles to global list
+                    {
+                        const std::lock_guard<std::mutex> lock(triangles_mutex);
+                        triangles.insert(triangles.end(), chunkTriangles.begin(), chunkTriangles.end());
+                    }
+
+#ifdef DEBUG_DRAW
+                    {
+                        const std::lock_guard<std::mutex> lock(contours_mutex);
+                        contours.insert(contours.end(), chunkContours.begin(), chunkContours.end());
+                    }
+#endif
                 }
-
-                polyList.push_back(poly);
             }
-
-            triangles.clear();
-            partition.Triangulate_MONO(&polyList, &triangles);
 
             std::vector<b2Body*> staticBodies;
 
@@ -423,9 +610,9 @@ namespace Simulation {
 
             b2Vec2 triBuffer[3];
             for (auto triangle : triangles) {
-                triBuffer[0] = { (float) triangle.GetPoint(0).x, (float) triangle.GetPoint(0).y };
-                triBuffer[1] = { (float) triangle.GetPoint(1).x, (float) triangle.GetPoint(1).y };
-                triBuffer[2] = { (float) triangle.GetPoint(2).x, (float) triangle.GetPoint(2).y };
+                triBuffer[0] = { (float)triangle.GetPoint(0).x, (float)triangle.GetPoint(0).y };
+                triBuffer[1] = { (float)triangle.GetPoint(1).x, (float)triangle.GetPoint(1).y };
+                triBuffer[2] = { (float)triangle.GetPoint(2).x, (float)triangle.GetPoint(2).y };
 
                 b2Body* groundBody = world.CreateBody(&posDef);
                 b2PolygonShape triangleShape;
@@ -434,7 +621,7 @@ namespace Simulation {
 
                 staticBodies.push_back(groundBody);
             }
-            
+
             // simulate rigid bodies
             float timestep = 1.0 / 60;
             i32 velIters = 6, posIters = 2;
@@ -454,6 +641,7 @@ namespace Simulation {
                 world.DestroyBody(staticBody);
             }
 #endif
+            
         }
     };
 };
