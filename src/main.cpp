@@ -17,13 +17,14 @@
 #include <glm/glm.hpp>
 
 // SPAWN BODY IDs
+#define NONE 0
 #define PENDULUM 1
 #define BOUNCE 2
 #define CAR 3
 
 /***** USER SETTINGS *****/
 #define SIMULATE_RIGID_BODIES   /* Simulate using rigid body system */
-#define SPAWN_BODY 0            /* Change this value to 1, 2 or 3 to spawn rigid bodies */
+#define SPAWN_BODY NONE            /* Change this value to 1, 2 or 3 to spawn rigid bodies */
 #define DOUGLAS_PEUCKER         /* Approximate world particle's Rigid body boundaries using Douglas Peucker Algorithm */
 //#define DEBUG_DRAW              /* Draw rigid body boundaries */
 //#define LOAD_FROM_FILE          /* Load binary file as initial simulation state */ 
