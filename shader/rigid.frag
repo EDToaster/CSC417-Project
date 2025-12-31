@@ -1,9 +1,8 @@
 #version 450
 
-in vec4 gl_TexCoord[];
-in vec4 gl_FragCoord;
-
 layout(location = 0) out vec4 color;
+
+uniform vec2 viewportSize;
 
 float PHI = 1.61803398874989484820459;  // phi = Golden Ratio   
 float PHIM1 = 0.61803398874989484820459;  // phi = Golden Ratio   
@@ -21,5 +20,7 @@ vec4 render_noise(in uint ind, in vec4 col) {
 }
 
 void main() {
-	color = vec4(0.7, 0.5, 0.4, 1) + render_noise(uint(10 * gl_TexCoord[0].x) + 10 * uint(10 * gl_TexCoord[0].y), vec4(0.2, 0.2, 0.2, 0.0));
+	// Calculate texture coordinates from gl_FragCoord
+	vec2 texCoord = gl_FragCoord.xy / viewportSize;
+	color = vec4(0.7, 0.5, 0.4, 1) + render_noise(uint(10 * texCoord.x) + 10 * uint(10 * texCoord.y), vec4(0.2, 0.2, 0.2, 0.0));
 }

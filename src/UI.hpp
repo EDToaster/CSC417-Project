@@ -25,29 +25,52 @@ namespace UI {
         sy = disp_res.y - py * ren_scale.y;
     }
 
-    void DrawCircle(const glm::ivec2& disp_res, i64 sx, i64 sy, i64 srx, i64 sry, bool includeCenter) {
+    // Optimized circle drawing with pre-calculated vertices
+    // Pre-calculate unit circle vertices once (static initialization)
+    static const int CIRCLE_SEGMENTS = 32; // Reduced from 40 for better performance
+    static GLfloat unitCircleVertices[CIRCLE_SEGMENTS * 2];
+    static bool circleVerticesInitialized = false;
+    
+    inline void InitializeCircleVertices() {
+        if (circleVerticesInitialized) return;
+        const float angleStep = 2.0f * PI / CIRCLE_SEGMENTS;
+        for (int i = 0; i < CIRCLE_SEGMENTS; i++) {
+            float angle = i * angleStep;
+            unitCircleVertices[i * 2] = cosf(angle);
+            unitCircleVertices[i * 2 + 1] = sinf(angle);
+        }
+        circleVerticesInitialized = true;
+    }
 
+    void DrawCircle(const glm::ivec2& disp_res, i64 sx, i64 sy, i64 srx, i64 sry, bool includeCenter) {
+        InitializeCircleVertices();
+        
         GLfloat x, y, rx, ry;
         UI::ScreenToOpenGL(disp_res, sx, sy, x, y);
         UI::ScreenToOpenGL(disp_res, srx, sry, rx, ry);
+        
+        // Scale factors for the circle
+        GLfloat scaleX = rx + 1.0f;
+        GLfloat scaleY = ry - 1.0f;
 
-        int i;
-        int triangleAmount = 40; //# of triangles used to draw circle
+        // Pre-transform vertices into a temporary array (faster than glBegin/glEnd)
+        static GLfloat transformedVertices[CIRCLE_SEGMENTS * 2];
+        for (int i = 0; i < CIRCLE_SEGMENTS; i++) {
+            transformedVertices[i * 2] = x + unitCircleVertices[i * 2] * scaleX;
+            transformedVertices[i * 2 + 1] = y + unitCircleVertices[i * 2 + 1] * scaleY;
+        }
 
-        //GLfloat radius = 0.8f; //radius
-        GLfloat twicePi = 2.0f * PI;
-
-        glBegin(GL_LINE_LOOP);
+        // Use glDrawArrays which is faster than glBegin/glEnd
+        glEnableClientState(GL_VERTEX_ARRAY);
+        glVertexPointer(2, GL_FLOAT, 0, transformedVertices);
+        glDrawArrays(GL_LINE_LOOP, 0, CIRCLE_SEGMENTS);
+        glDisableClientState(GL_VERTEX_ARRAY);
+        
         if (includeCenter) {
+            glBegin(GL_POINTS);
             glVertex2f(x, y);
+            glEnd();
         }
-        for (i = 0; i <= triangleAmount; i++) {
-            glVertex2f(
-                x + ((rx + 1) * cos(i * twicePi / triangleAmount)),
-                y + ((ry - 1) * sin(i * twicePi / triangleAmount))
-            );
-        }
-        glEnd();
     }
 
     void DrawRect(const glm::ivec2& disp_res, i64 s1x, i64 s1y, i64 s2x, i64 s2y) {

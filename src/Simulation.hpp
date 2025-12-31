@@ -533,7 +533,10 @@ namespace Simulation {
             }
 
             // reset triangles and contours
+
+#ifdef SIMULATE_RIGID_BODIES
             triangles.clear();
+#endif
 #ifdef DEBUG_DRAW
             contours.clear();
 #endif

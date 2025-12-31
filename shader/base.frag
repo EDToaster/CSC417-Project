@@ -12,8 +12,7 @@ layout(std430, binding = 1) buffer particlelayout
 
 uniform vec2 simResolution;
 
-in vec4 gl_FragCoord;
-out vec4 gl_FragColor;
+out vec4 fragColor;
 
 float PHI = 1.61803398874989484820459;  // phi = Golden Ratio   
 float PHIM1 = 0.61803398874989484820459;  // phi = Golden Ratio   
@@ -96,7 +95,7 @@ void main() {
         }
     }
 
-	gl_FragColor = mix(col, bloomCol, 0.5);
+	fragColor = mix(col, bloomCol, 0.5);
 	//float i;
 	//float c = modf(float(particleIndex) / 255.0, i);
 	//gl_FragColor = vec4(c, 0, 0, 1.0);

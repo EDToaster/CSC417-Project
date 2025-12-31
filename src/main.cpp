@@ -23,17 +23,17 @@
 #define CAR 3
 
 /***** USER SETTINGS *****/
-#define SIMULATE_RIGID_BODIES   /* Simulate using rigid body system */
+//#define SIMULATE_RIGID_BODIES   /* Simulate using rigid body system */
 #define SPAWN_BODY NONE            /* Change this value to 1, 2 or 3 to spawn rigid bodies */
 #define DOUGLAS_PEUCKER         /* Approximate world particle's Rigid body boundaries using Douglas Peucker Algorithm */
 //#define DEBUG_DRAW              /* Draw rigid body boundaries */
-//#define LOAD_FROM_FILE          /* Load binary file as initial simulation state */ 
+#define LOAD_FROM_FILE          /* Load binary file as initial simulation state */ 
 #define TEXTURE_FILE "oct.b"    /* Filename, stored in assets/ */
 
 #define SIM_WIDTH 400
 #define SIM_HEIGHT 300
-#define RENDER_WIDTH 1200
-#define RENDER_HEIGHT 900
+#define RENDER_WIDTH 2400
+#define RENDER_HEIGHT 1800
 
 /***** END USER SETTINGS  *****/
 
@@ -87,8 +87,9 @@ GLFWwindow* InitializeAndCreateWindow(std::string title, glm::ivec2 renderResolu
     //glDepthFunc(GL_LESS);  // depth-testing interprets a smaller value as "closer"
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    // vsync
-    glfwSwapInterval(false); 
+    // Enable vsync to cap frame rate and reduce CPU/GPU load
+    // This helps prevent stuttering when mouse moves by limiting frame rate
+    glfwSwapInterval(1); 
     glEnable(GL_TEXTURE_2D);
     std::cout << "Window Created" << std::endl;
     return window;
@@ -230,6 +231,15 @@ int main(int argc, const char* argv[]) {
     glfwSetWindowUserPointer(window, &sim);
     glfwSetKeyCallback(window, key_callback);
     glfwSetScrollCallback(window, scroll_callback);
+    
+    // Cache mouse position to avoid querying every frame (which can be expensive on Windows)
+    // Use static variables so the callback can access them
+    static double cachedMouseX = 0.0, cachedMouseY = 0.0;
+    glfwGetCursorPos(window, &cachedMouseX, &cachedMouseY); // Initialize
+    glfwSetCursorPosCallback(window, [](GLFWwindow* w, double x, double y) {
+        cachedMouseX = x;
+        cachedMouseY = y;
+    });
 
     // setup render to texture
     GLuint frameBuffer = 0;
@@ -261,9 +271,22 @@ int main(int argc, const char* argv[]) {
     Rendering::Particle* render_data = new Rendering::Particle[simResolution.x * simResolution.y];
 
     i64 tick = 0;
+    // Throttle event polling to reduce CPU usage with high mouse polling rates
+    // Use time-based throttling for better responsiveness than frame-based
+    double lastEventPollTime = glfwGetTime();
+    const double EVENT_POLL_INTERVAL = 0.005; // Poll events every 5ms (200Hz max event processing)
+    
     while (!glfwWindowShouldClose(window)) {
-        double mx, my, x, y;
-        glfwGetCursorPos(window, &mx, &my);
+        // Poll events at the start of frame with time-based throttling
+        // This prevents processing too many mouse events per second while maintaining responsiveness
+        double currentTime = glfwGetTime();
+        if (currentTime - lastEventPollTime >= EVENT_POLL_INTERVAL) {
+            glfwPollEvents();
+            lastEventPollTime = currentTime;
+        }
+        // Use cached mouse position instead of querying every frame
+        double mx = cachedMouseX, my = cachedMouseY;
+        double x, y;
         x = mx / renderScale.x;
         y = my / renderScale.y;
         y = sim.height - y;
@@ -301,6 +324,7 @@ int main(int argc, const char* argv[]) {
 
         // draw rigid bodies
         rigidShader.use();
+        rigidShader.setUniform("viewportSize", glm::vec2{ simResolution });
 
         glColor3f(1, 1, 1);
         for (auto rbody : sim.rigidBodies) {
@@ -357,6 +381,7 @@ int main(int argc, const char* argv[]) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, renderResolution.x, renderResolution.y);
         screenShader.use();
+        screenShader.setUniform("viewportSize", glm::vec2{ renderResolution });
         glColor3f(1, 1, 1);
         glBegin(GL_QUADS);
         {
@@ -435,7 +460,6 @@ int main(int argc, const char* argv[]) {
         UI::DrawCircle(renderResolution, mx, my, sim.radius * renderScale.x, sim.radius * renderScale.y, false);
 
         glfwSwapBuffers(window);
-        glfwPollEvents();
 
         // GAME LOGIC
         // set mouse pos to current block

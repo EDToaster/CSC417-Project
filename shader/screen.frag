@@ -1,10 +1,11 @@
 #version 450
 
-in vec4 gl_TexCoord[];
-in vec2 gl_FragCoord;
 out vec3 color;
 uniform sampler2D renderedTexture;
+uniform vec2 viewportSize;
 
 void main() {
-    color = texture(renderedTexture, gl_TexCoord[0].xy).xyz;
+    // Calculate texture coordinates from gl_FragCoord for full-screen quad
+    vec2 texCoord = gl_FragCoord.xy / viewportSize;
+    color = texture(renderedTexture, texCoord).xyz;
 }
