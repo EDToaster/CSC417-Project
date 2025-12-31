@@ -12,9 +12,12 @@
 
 #include <omp.h>
 
-#include <GL/glew.h>
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
+#include "VulkanContext.hpp"
+#include "VulkanSwapchain.hpp"
 
 // SPAWN BODY IDs
 #define NONE 0
@@ -40,7 +43,8 @@
 // for multithreading
 #define CHUNK_SIZE 16
 
-#include "Shader.hpp"
+// TODO: Phase 2 - Migrate shaders to Vulkan
+// #include "Shader.hpp"
 #include "Types.hpp"
 #include "UI.hpp"
 #include "Simulation.hpp"
@@ -50,13 +54,24 @@
 #define TEXTURES_DIR "../assets/textures/"
 
 
-GLFWwindow* InitializeAndCreateWindow(std::string title, glm::ivec2 renderResolution) {
-    std::cout << "Initializing OpenGL" << std::endl;
+struct VulkanWindow {
+    GLFWwindow* window;
+    VkSurfaceKHR surface;
+    Vulkan::VulkanContext* context;
+    Vulkan::VulkanSwapchain* swapchain;
+};
+
+VulkanWindow* InitializeAndCreateWindow(std::string title, glm::ivec2 renderResolution) {
+    std::cout << "Initializing Vulkan" << std::endl;
 
     // initialize the GLFW library
     if (!glfwInit()) {
-    throw std::runtime_error("Couldn't init GLFW");
+        throw std::runtime_error("Couldn't init GLFW");
     }
+
+    // Don't create OpenGL context
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     // create the window
     GLFWwindow* window = glfwCreateWindow(renderResolution.x, renderResolution.y, title.c_str(), NULL, NULL);
@@ -65,36 +80,40 @@ GLFWwindow* InitializeAndCreateWindow(std::string title, glm::ivec2 renderResolu
         throw std::runtime_error("Couldn't create a window");
     }
 
-    glfwMakeContextCurrent(window);
-
-    glewExperimental = GL_TRUE;
-    GLenum err = glewInit();
-
-    if (err != GLEW_OK) {
+    // Initialize Vulkan context (creates instance in constructor)
+    Vulkan::VulkanContext* context = new Vulkan::VulkanContext();
+    
+    // Create surface using GLFW (instance already created)
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkInstance instance = context->GetInstance();
+    VkResult result = glfwCreateWindowSurface(instance, window, nullptr, &surface);
+    if (result != VK_SUCCESS) {
+        context->Cleanup();
+        delete context;
+        glfwDestroyWindow(window);
         glfwTerminate();
-        throw std::runtime_error(std::string("Could initialize GLEW, error = ") +
-                                (const char*)glewGetErrorString(err));
+        throw std::runtime_error("Failed to create window surface!");
     }
 
-    // get version info
-    const GLubyte* renderer = glGetString(GL_RENDERER);
-    const GLubyte* version = glGetString(GL_VERSION);
-    std::cout << "Renderer: " << renderer << std::endl;
-    std::cout << "OpenGL version supported " << version << std::endl;
+    // Initialize context with surface (creates device, queues)
+    context->Initialize(surface);
 
-    // opengl configuration
-    //glEnable(GL_DEPTH_TEST);  // enable depth-testing
-    //glDepthFunc(GL_LESS);  // depth-testing interprets a smaller value as "closer"
+    // Create swapchain
+    Vulkan::VulkanSwapchain* swapchain = new Vulkan::VulkanSwapchain(
+        context, surface, renderResolution.x, renderResolution.y);
 
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    // Enable vsync to cap frame rate and reduce CPU/GPU load
-    // This helps prevent stuttering when mouse moves by limiting frame rate
-    glfwSwapInterval(1); 
-    glEnable(GL_TEXTURE_2D);
-    std::cout << "Window Created" << std::endl;
-    return window;
+    VulkanWindow* vkWindow = new VulkanWindow();
+    vkWindow->window = window;
+    vkWindow->surface = surface;
+    vkWindow->context = context;
+    vkWindow->swapchain = swapchain;
+
+    std::cout << "Vulkan window created successfully" << std::endl;
+    return vkWindow;
 }
 
+// TODO: Phase 2 - Migrate shaders to Vulkan
+/*
 ShaderProgram CreateBaseShader() {
     Shader baseFrag(SHADER_DIR "base.frag", GL_FRAGMENT_SHADER);
     return ShaderProgram({ baseFrag });
@@ -109,6 +128,7 @@ ShaderProgram CreateScreenShader() {
     Shader rigidFrag(SHADER_DIR "screen.frag", GL_FRAGMENT_SHADER);
     return ShaderProgram({ rigidFrag });
 }
+*/
 
 UI::UIRenderer CreateUI(const glm::ivec2 renderResolution) {
     // Initialize UI
@@ -225,8 +245,11 @@ int main(int argc, const char* argv[]) {
     UI::UIRenderer ui = CreateUI(renderResolution);
 
     // Setup render pipeline
-    GLFWwindow* window = InitializeAndCreateWindow(std::string("CSC417 Project: ") + sim.name, renderResolution);
-    ShaderProgram baseShader = CreateBaseShader(), rigidShader = CreateRigidShader(), screenShader = CreateScreenShader();
+    VulkanWindow* vkWindow = InitializeAndCreateWindow(std::string("CSC417 Project: ") + sim.name, renderResolution);
+    GLFWwindow* window = vkWindow->window;
+    
+    // TODO: Migrate shaders to Vulkan (keeping OpenGL shaders for now during migration)
+    // ShaderProgram baseShader = CreateBaseShader(), rigidShader = CreateRigidShader(), screenShader = CreateScreenShader();
 
     glfwSetWindowUserPointer(window, &sim);
     glfwSetKeyCallback(window, key_callback);
@@ -241,7 +264,9 @@ int main(int argc, const char* argv[]) {
         cachedMouseY = y;
     });
 
-    // setup render to texture
+    // TODO: Phase 2 - Migrate to Vulkan framebuffers and buffers
+    // setup render to texture (OpenGL - commented out for Phase 1)
+    /*
     GLuint frameBuffer = 0;
     glGenFramebuffers(1, &frameBuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
@@ -267,14 +292,19 @@ int main(int argc, const char* argv[]) {
     glGenBuffers(1, &ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo);
+    */
 
-    Rendering::Particle* render_data = new Rendering::Particle[simResolution.x * simResolution.y];
+    // TODO: Phase 2 - Migrate to Vulkan buffers
+    // Rendering::Particle* render_data = new Rendering::Particle[simResolution.x * simResolution.y];
 
     i64 tick = 0;
     // Throttle event polling to reduce CPU usage with high mouse polling rates
     // Use time-based throttling for better responsiveness than frame-based
     double lastEventPollTime = glfwGetTime();
     const double EVENT_POLL_INTERVAL = 0.005; // Poll events every 5ms (200Hz max event processing)
+    
+    std::cout << "[INFO] Phase 1 Complete: Vulkan initialized. Window should be visible (no rendering yet)." << std::endl;
+    std::cout << "[INFO] Press ESC or close window to exit." << std::endl;
     
     while (!glfwWindowShouldClose(window)) {
         // Poll events at the start of frame with time-based throttling
@@ -293,6 +323,8 @@ int main(int argc, const char* argv[]) {
 
         Simulation::Grid& currentGrid = sim.grid;
 
+        // TODO: Phase 2 - Setup data for Vulkan rendering
+        /*
         // setup data for render
         for (i64 i = 0; i < sim.height; i++) {
             for (i64 j = 0; j < sim.width; j++) {
@@ -307,8 +339,11 @@ int main(int argc, const char* argv[]) {
             }
         }
         glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Rendering::Particle)* simResolution.x* simResolution.y, render_data, GL_DYNAMIC_DRAW);
+        */
 
-        // render to texture
+        // TODO: Phase 2 - Migrate rendering to Vulkan
+        // render to texture (OpenGL - commented out for Phase 1)
+        /*
         glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
         glViewport(0, 0, simResolution.x, simResolution.y);
 
@@ -319,10 +354,12 @@ int main(int argc, const char* argv[]) {
         baseShader.setUniform("simResolution", glm::vec2{ simResolution });
         glRectf(-1, -1, 1, 1);
         baseShader.unuse();
+        */
 
 #ifdef SIMULATE_RIGID_BODIES
-
-        // draw rigid bodies
+        // TODO: Phase 2 - Migrate rigid body rendering to Vulkan
+        // draw rigid bodies (OpenGL - commented out for Phase 1)
+        /*
         rigidShader.use();
         rigidShader.setUniform("viewportSize", glm::vec2{ simResolution });
 
@@ -374,9 +411,12 @@ int main(int argc, const char* argv[]) {
             //UI::DrawCircle(renres, sx, sy, 3, 3);
         }
         rigidShader.unuse();
+        */
 #endif
 
-        // render to screen
+        // TODO: Phase 2 - Migrate screen rendering to Vulkan
+        // render to screen (OpenGL - commented out for Phase 1)
+        /*
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glViewport(0, 0, renderResolution.x, renderResolution.y);
@@ -397,10 +437,13 @@ int main(int argc, const char* argv[]) {
         glEnd();
         screenShader.unuse(); 
         glDisable(GL_TEXTURE_2D);
+        */
 
 #ifdef SIMULATE_RIGID_BODIES
 #ifdef DEBUG_DRAW
-        // draw contours
+        // TODO: Phase 2 - Migrate debug drawing to Vulkan
+        // draw contours (OpenGL - commented out for Phase 1)
+        /*
         if (!sim.paused) {
             glLineWidth(1);
             for (auto contour : sim.contours) {
@@ -448,18 +491,21 @@ int main(int argc, const char* argv[]) {
             glPolygonMode(GL_BACK, GL_FILL);
 
         }
+        */
 #endif
 #endif
 
-        // draw selectors
-        ui.Render(sim.currentParticleType->id);
+        // TODO: Phase 4 - Migrate UI rendering to Vulkan
+        // draw selectors (OpenGL - commented out for Phase 1)
+        // ui.Render(sim.currentParticleType->id);
 
-        // draw circle around 
-        glColor3f(1, 1, 1);
-        glLineWidth(1);
-        UI::DrawCircle(renderResolution, mx, my, sim.radius * renderScale.x, sim.radius * renderScale.y, false);
+        // draw circle around (OpenGL - commented out for Phase 1)
+        // glColor3f(1, 1, 1);
+        // glLineWidth(1);
+        // UI::DrawCircle(renderResolution, mx, my, sim.radius * renderScale.x, sim.radius * renderScale.y, false);
 
-        glfwSwapBuffers(window);
+        // TODO: Phase 2 - Implement Vulkan presentation
+        // glfwSwapBuffers(window); // OpenGL swap - need Vulkan presentation
 
         // GAME LOGIC
         // set mouse pos to current block
@@ -528,8 +574,15 @@ int main(int argc, const char* argv[]) {
         //std::cout << "Tick" << std::endl;
     }
 
-    baseShader.unuse();
+    // TODO: Cleanup Vulkan resources
+    // baseShader.unuse();
+    
+    // Cleanup Vulkan resources
+    delete vkWindow->swapchain;
+    vkDestroySurfaceKHR(vkWindow->context->GetInstance(), vkWindow->surface, nullptr);
+    vkWindow->context->Cleanup();
+    delete vkWindow->context;
     glfwDestroyWindow(window);
-
-
+    delete vkWindow;
+    glfwTerminate();
 }

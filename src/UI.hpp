@@ -9,13 +9,25 @@
 
 #include "Types.hpp"
 
+// TODO: Phase 4 - Migrate UI rendering to Vulkan
+// OpenGL types and functions are stubbed out during Vulkan migration
+#ifndef GL_FLOAT
+#define GL_FLOAT 0x1406
+#define GL_VERTEX_ARRAY 0x8074
+#define GL_LINE_LOOP 0x0002
+#define GL_POINTS 0x0000
+typedef float GLfloat;
+typedef unsigned char GLubyte;
+#endif
+
 #define FONTS_DIR "../assets/fonts/"
 
 #define PI 3.141592653589793238462643383279502884
 
 namespace UI {
 
-    void ScreenToOpenGL(const glm::ivec2& disp_res, i64 x, i64 y, GLfloat& glx, GLfloat& gly) {
+    void ScreenToOpenGL(const glm::ivec2& disp_res, i64 x, i64 y, float& glx, float& gly) {
+        // TODO: Phase 4 - This function may be renamed/refactored for Vulkan
         glx = 2 * x / double(disp_res.x) - 1.0;
         gly = 2 * (disp_res.y - y) / double(disp_res.y) - 1.0;
     }
@@ -43,6 +55,11 @@ namespace UI {
     }
 
     void DrawCircle(const glm::ivec2& disp_res, i64 sx, i64 sy, i64 srx, i64 sry, bool includeCenter) {
+        // TODO: Phase 4 - Migrate to Vulkan rendering
+        // Stubbed out during Vulkan migration
+        (void)disp_res; (void)sx; (void)sy; (void)srx; (void)sry; (void)includeCenter;
+        
+        /*
         InitializeCircleVertices();
         
         GLfloat x, y, rx, ry;
@@ -71,13 +88,20 @@ namespace UI {
             glVertex2f(x, y);
             glEnd();
         }
+        */
     }
 
     void DrawRect(const glm::ivec2& disp_res, i64 s1x, i64 s1y, i64 s2x, i64 s2y) {
+        // TODO: Phase 4 - Migrate to Vulkan rendering
+        // Stubbed out during Vulkan migration
+        (void)disp_res; (void)s1x; (void)s1y; (void)s2x; (void)s2y;
+        
+        /*
         GLfloat sc1x, sc1y, sc2x, sc2y;
         ScreenToOpenGL(disp_res, s1x, s1y, sc1x, sc1y);
         ScreenToOpenGL(disp_res, s2x, s2y, sc2x, sc2y);
         glRectd(sc1x, sc1y, sc2x, sc2y);
+        */
     }
 
     class Text {
@@ -167,6 +191,11 @@ namespace UI {
            0xff, 0xc0, 0xff, 0xc0 };
 
         void Render(int selectedid) {
+            // TODO: Phase 4 - Migrate to Vulkan rendering
+            // Stubbed out during Vulkan migration
+            (void)selectedid;
+            
+            /*
             // draw displays
             for (auto d : displays) {
                 if (d.id == selectedid) {
@@ -198,6 +227,7 @@ namespace UI {
                     //glFlush();
                 }
             }
+            */
         }
     };
 }
